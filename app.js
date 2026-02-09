@@ -1,5 +1,4 @@
-// Property Assessment Dashboard - GeoJSON Version
-// Reads all properties from a single GeoJSON file
+// Property Assessment Dashboard - Diagnostic Version with Fallback Data
 
 let allProperties = [];
 let propertiesByType = {
@@ -16,82 +15,212 @@ let statistics = {
     vacant: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 }
 };
 
-// Configuration: Map your shapefile field names to what the app expects
 const FIELD_MAPPING = {
-    parcelId: 'parcelId',           // Your parcel ID field name
-    address: 'address',             // Your address field name
-    owner: 'owner',                 // Your owner field name
-    propertyType: 'propertyType',   // Field that indicates Residential/Condo/Commercial/Vacant
-    
-    // Residential/Vacant fields
+    parcelId: 'parcelId',
+    address: 'address',
+    owner: 'owner',
+    propertyType: 'propertyType',
     neighborhood: 'neighborhood',
     designStyle: 'designStyle',
     acreage: 'acreage',
     bedrooms: 'bedrooms',
     bathrooms: 'bathrooms',
-    
-    // Condo fields
     complex: 'complex',
     style: 'style',
     location: 'location',
-    
-    // Commercial fields
     zone: 'zone',
     buildingClass: 'buildingClass',
     useCategory: 'useCategory',
-    
-    // Common fields
     sqft: 'sqft',
     yearBuilt: 'yearBuilt',
     assessment2020: 'assessment2020',
     assessment2025: 'assessment2025'
 };
 
-// Wait for all resources to load
+// Fallback sample data
+const SAMPLE_DATA = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "parcelId": "R001",
+                "address": "123 Main Street",
+                "owner": "Sample Property",
+                "propertyType": "Residential",
+                "designStyle": "Colonial",
+                "acreage": 0.25,
+                "bedrooms": 3,
+                "bathrooms": 2,
+                "sqft": 2000,
+                "yearBuilt": 1995,
+                "assessment2020": 250000,
+                "assessment2025": 320000
+            },
+            "geometry": { "type": "Point", "coordinates": [-72.729, 41.698] }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "parcelId": "R002",
+                "address": "456 Oak Avenue",
+                "owner": "Sample Property",
+                "propertyType": "Residential",
+                "designStyle": "Ranch",
+                "acreage": 0.35,
+                "bedrooms": 4,
+                "bathrooms": 2.5,
+                "sqft": 2400,
+                "yearBuilt": 2005,
+                "assessment2020": 280000,
+                "assessment2025": 355000
+            },
+            "geometry": { "type": "Point", "coordinates": [-72.735, 41.701] }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "parcelId": "C001",
+                "address": "100 Condo Lane Unit 1A",
+                "owner": "Sample Property",
+                "propertyType": "Condo",
+                "style": "Condominium",
+                "location": "First Floor",
+                "sqft": 1200,
+                "bedrooms": 2,
+                "bathrooms": 2,
+                "yearBuilt": 2010,
+                "assessment2020": 180000,
+                "assessment2025": 245000
+            },
+            "geometry": { "type": "Point", "coordinates": [-72.730, 41.700] }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "parcelId": "COM001",
+                "address": "500 Business Parkway",
+                "owner": "Sample Property",
+                "propertyType": "Commercial",
+                "zone": "Business",
+                "buildingClass": "Masonry",
+                "useCategory": "Office",
+                "sqft": 15000,
+                "yearBuilt": 2000,
+                "assessment2020": 1500000,
+                "assessment2025": 1850000
+            },
+            "geometry": { "type": "Point", "coordinates": [-72.728, 41.695] }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "parcelId": "V001",
+                "address": "Vacant Lot Development Road",
+                "owner": "Sample Property",
+                "propertyType": "Vacant",
+                "zone": "Residential",
+                "acreage": 2.5,
+                "assessment2020": 95000,
+                "assessment2025": 115000
+            },
+            "geometry": { "type": "Point", "coordinates": [-72.737, 41.702] }
+        }
+    ]
+};
+
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, waiting for libraries...');
+    console.log('✓ DOM loaded, waiting for libraries...');
+    showStatus('Loading libraries...');
     
     const checkLibraries = setInterval(function() {
         if (typeof Chart !== 'undefined' && typeof L !== 'undefined') {
             clearInterval(checkLibraries);
-            console.log('All libraries loaded, loading property data...');
+            console.log('✓ All libraries loaded');
+            showStatus('Libraries loaded. Loading property data...');
             loadPropertyData();
         }
     }, 100);
 });
 
-// Load GeoJSON data
-async function loadPropertyData() {
-    try {
-        console.log('Fetching properties.geojson...');
-        const response = await fetch('properties.geojson');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const geojson = await response.json();
-        console.log(`Loaded ${geojson.features.length} properties from GeoJSON`);
-        
-        // Process features
-        processGeoJSON(geojson);
-        
-        // Initialize app
-        initializeApp();
-        
-    } catch (error) {
-        console.error('Error loading property data:', error);
-        alert('Error loading property data. Make sure properties.geojson exists in the same directory.');
+function showStatus(message) {
+    // Create status overlay if it doesn't exist
+    let statusDiv = document.getElementById('status-overlay');
+    if (!statusDiv) {
+        statusDiv = document.createElement('div');
+        statusDiv.id = 'status-overlay';
+        statusDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10000;
+            text-align: center;
+            min-width: 300px;
+        `;
+        document.body.appendChild(statusDiv);
+    }
+    statusDiv.innerHTML = `<p style="margin: 0; font-size: 1.1rem;">${message}</p>`;
+}
+
+function hideStatus() {
+    const statusDiv = document.getElementById('status-overlay');
+    if (statusDiv) {
+        statusDiv.remove();
     }
 }
 
-// Process GeoJSON and categorize properties
+async function loadPropertyData() {
+    try {
+        console.log('Attempting to fetch properties.geojson...');
+        showStatus('Fetching properties.geojson...');
+        
+        const response = await fetch('properties.geojson');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const geojson = await response.json();
+        console.log(`✓ Loaded ${geojson.features.length} properties from GeoJSON`);
+        showStatus(`Loaded ${geojson.features.length} properties. Processing...`);
+        
+        processGeoJSON(geojson);
+        initializeApp();
+        hideStatus();
+        
+    } catch (error) {
+        console.error('❌ Error loading property data:', error);
+        console.warn('⚠️ Using sample data instead');
+        
+        showStatus(`
+            <div style="color: #d97706;">
+                <p style="margin: 0 0 1rem 0; font-weight: bold;">⚠️ Could not load properties.geojson</p>
+                <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Error: ${error.message}</p>
+                <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Using sample data to demonstrate functionality.</p>
+                <button onclick="hideStatus()" style="padding: 0.5rem 1rem; cursor: pointer; background: #6b8cae; color: white; border: none; border-radius: 4px;">Continue with Sample Data</button>
+            </div>
+        `);
+        
+        // Use sample data
+        setTimeout(() => {
+            processGeoJSON(SAMPLE_DATA);
+            initializeApp();
+        }, 1000);
+    }
+}
+
 function processGeoJSON(geojson) {
+    console.log('Processing GeoJSON features...');
+    
     geojson.features.forEach(feature => {
         const props = feature.properties;
         const geometry = feature.geometry;
         
-        // Get centroid coordinates
         let lat, lng;
         if (props.lat && props.lng) {
             lat = props.lat;
@@ -100,7 +229,6 @@ function processGeoJSON(geojson) {
             lng = geometry.coordinates[0];
             lat = geometry.coordinates[1];
         } else if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
-            // Calculate centroid (simple average of coordinates)
             const coords = geometry.type === 'Polygon' 
                 ? geometry.coordinates[0] 
                 : geometry.coordinates[0][0];
@@ -108,14 +236,11 @@ function processGeoJSON(geojson) {
             lat = coords.reduce((sum, c) => sum + c[1], 0) / coords.length;
         }
         
-        // Create property object
         const property = {
             parcelId: props[FIELD_MAPPING.parcelId] || 'Unknown',
             address: props[FIELD_MAPPING.address] || 'Unknown',
             owner: props[FIELD_MAPPING.owner] || 'Unknown',
             propertyType: normalizePropertyType(props[FIELD_MAPPING.propertyType]),
-            
-            // Optional fields
             neighborhood: props[FIELD_MAPPING.neighborhood],
             designStyle: props[FIELD_MAPPING.designStyle],
             acreage: parseFloat(props[FIELD_MAPPING.acreage]) || 0,
@@ -129,29 +254,22 @@ function processGeoJSON(geojson) {
             useCategory: props[FIELD_MAPPING.useCategory],
             sqft: parseInt(props[FIELD_MAPPING.sqft]) || 0,
             yearBuilt: parseInt(props[FIELD_MAPPING.yearBuilt]) || 0,
-            
-            // Assessment values
             assessment2020: parseFloat(props[FIELD_MAPPING.assessment2020]) || 0,
             assessment2025: parseFloat(props[FIELD_MAPPING.assessment2025]) || 0,
-            
-            // Coordinates
             lat: lat,
             lng: lng,
-            
-            // Keep original geometry for polygon display if needed
             geometry: geometry
         };
         
         allProperties.push(property);
         
-        // Categorize by type
         const type = property.propertyType.toLowerCase();
         if (propertiesByType[type]) {
             propertiesByType[type].push(property);
         }
     });
     
-    console.log('Properties by type:', {
+    console.log('✓ Properties categorized:', {
         residential: propertiesByType.residential.length,
         condo: propertiesByType.condo.length,
         commercial: propertiesByType.commercial.length,
@@ -159,49 +277,36 @@ function processGeoJSON(geojson) {
     });
 }
 
-// Normalize property type names
 function normalizePropertyType(type) {
     if (!type) return 'residential';
     
     const typeStr = type.toString().toLowerCase();
     
-    // Residential variations
     if (typeStr.includes('res') || typeStr.includes('single') || typeStr.includes('family')) {
         return 'residential';
     }
-    // Condo variations
     if (typeStr.includes('condo') || typeStr.includes('town')) {
         return 'condo';
     }
-    // Commercial variations
     if (typeStr.includes('comm') || typeStr.includes('business') || typeStr.includes('industrial')) {
         return 'commercial';
     }
-    // Vacant variations
     if (typeStr.includes('vac') || typeStr.includes('land')) {
         return 'vacant';
     }
     
-    return 'residential'; // default
+    return 'residential';
 }
 
 function initializeApp() {
-    // Calculate statistics
+    console.log('Initializing application...');
     calculateStatistics();
-    
-    // Initialize map
     initializeMap();
-    
-    // Initialize all charts
     initializeCharts();
-    
-    // Update statistics in UI
     updateStatisticsUI();
-    
-    console.log('Application initialized successfully');
+    console.log('✓ Application initialized successfully');
 }
 
-// Calculate statistics from property data
 function calculateStatistics() {
     ['residential', 'condo', 'commercial', 'vacant'].forEach(type => {
         const properties = propertiesByType[type];
@@ -211,11 +316,9 @@ function calculateStatistics() {
             parcelCount: properties.length
         };
     });
-    
-    console.log('Statistics calculated:', statistics);
+    console.log('✓ Statistics calculated');
 }
 
-// Update statistics in the UI
 function updateStatisticsUI() {
     const formatCurrency = (num) => '$' + num.toLocaleString('en-US');
     const formatNumber = (num) => num.toLocaleString('en-US');
@@ -247,19 +350,19 @@ function updateStatisticsUI() {
     updateStatCard('vacant', statistics.vacant.totalAssessment2020, 
                    statistics.vacant.totalAssessment2025, 
                    statistics.vacant.parcelCount);
+    
+    console.log('✓ Statistics UI updated');
 }
 
-// Initialize Leaflet Map with all properties
 function initializeMap() {
     try {
         const map = L.map('map').setView([41.698, -72.731], 13);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution: '© OpenStreetMap contributors',
             maxZoom: 19
         }).addTo(map);
         
-        // Color by property type
         const colors = {
             residential: '#e55d75',
             condo: '#f59e0b',
@@ -267,7 +370,6 @@ function initializeMap() {
             vacant: '#10b981'
         };
         
-        // Add markers for all properties
         let bounds = [];
         
         allProperties.forEach(prop => {
@@ -284,7 +386,6 @@ function initializeMap() {
                         <strong>${prop.address}</strong><br>
                         <span style="color: ${color}; font-weight: bold;">${prop.propertyType.toUpperCase()}</span><br>
                         <strong>Parcel:</strong> ${prop.parcelId}<br>
-                        ${prop.designStyle ? `<strong>Style:</strong> ${prop.designStyle}<br>` : ''}
                         ${prop.sqft > 0 ? `<strong>Sq Ft:</strong> ${prop.sqft.toLocaleString()}<br>` : ''}
                         <strong>2020:</strong> $${prop.assessment2020.toLocaleString()}<br>
                         <strong>2025:</strong> $${prop.assessment2025.toLocaleString()}<br>
@@ -306,18 +407,16 @@ function initializeMap() {
             }
         });
         
-        // Fit map to show all markers
         if (bounds.length > 0) {
             map.fitBounds(bounds, { padding: [50, 50] });
         }
         
-        console.log('Map initialized successfully with', allProperties.length, 'markers');
+        console.log('✓ Map initialized with', allProperties.length, 'markers');
     } catch (error) {
-        console.error('Error initializing map:', error);
+        console.error('❌ Error initializing map:', error);
     }
 }
 
-// Aggregate properties by field
 function aggregateByField(properties, field, valueField = 'assessment2025') {
     const aggregated = {};
     properties.forEach(prop => {
@@ -336,8 +435,9 @@ function aggregateByField(properties, field, valueField = 'assessment2025') {
     })).sort((a, b) => b.value - a.value);
 }
 
-// Initialize all charts (same as before but using propertiesByType)
 function initializeCharts() {
+    console.log('Initializing charts...');
+    
     // Residential Scatter
     new Chart(document.getElementById('residentialScatter'), {
         type: 'scatter',
@@ -357,7 +457,7 @@ function initializeCharts() {
             scales: {
                 x: { title: { display: true, text: 'Acreage' } },
                 y: { 
-                    title: { display: true, text: 'Assessed Value ($)' },
+                    title: { display: true, text: 'Value ($)' },
                     ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
                 }
             }
@@ -399,7 +499,7 @@ function initializeCharts() {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { title: { display: true, text: 'Finished Area (sq ft)' } },
+                x: { title: { display: true, text: 'Sq Ft' } },
                 y: { 
                     title: { display: true, text: 'Value ($)' },
                     ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
@@ -550,10 +650,9 @@ function initializeCharts() {
         }
     });
     
-    console.log('All charts initialized from GeoJSON data');
+    console.log('✓ All charts initialized');
 }
 
-// Tab switching function
 function switchTab(tabName) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     event.target.classList.add('active');

@@ -35,26 +35,43 @@
             color: var(--text);
         }
 
-        /* Better scrollbar styling */
+        /* VERY VISIBLE scrollbar styling */
         .content-area::-webkit-scrollbar,
         .sidebar::-webkit-scrollbar {
-            width: 12px;
+            width: 16px;
+            background: #e0e0e0;
         }
 
         .content-area::-webkit-scrollbar-track,
         .sidebar::-webkit-scrollbar-track {
-            background: var(--bg);
+            background: #e0e0e0;
+            border-left: 1px solid #cccccc;
         }
 
         .content-area::-webkit-scrollbar-thumb,
         .sidebar::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 6px;
+            background: #888888;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
         }
 
         .content-area::-webkit-scrollbar-thumb:hover,
         .sidebar::-webkit-scrollbar-thumb:hover {
-            background: var(--primary);
+            background: #555555;
+        }
+
+        .content-area::-webkit-scrollbar-thumb:active,
+        .sidebar::-webkit-scrollbar-thumb:active {
+            background: #333333;
+        }
+
+        /* Force scrollbar to always show */
+        .content-area {
+            overflow-y: scroll !important;
+        }
+
+        .sidebar {
+            overflow-y: scroll !important;
         }
 
         .app-container {
@@ -216,11 +233,12 @@
 
         /* Content Area */
         .content-area {
-            overflow-y: auto;
+            overflow-y: scroll !important;
             overflow-x: hidden;
             background: var(--bg);
             padding: 2rem;
             height: 100%;
+            min-height: 600px;
         }
 
         .stats-row {
