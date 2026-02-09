@@ -15,6 +15,8 @@ let statistics = {
     vacant: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 }
 };
 
+let map;
+
 const FIELD_MAPPING = {
     parcelId: 'parcelId',
     address: 'address',
@@ -302,8 +304,8 @@ function initializeApp() {
     console.log('Initializing application...');
     calculateStatistics();
     initializeMap();
-    initializeCharts();
     updateStatisticsUI();
+    initializeCharts(); 
     console.log('✓ Application initialized successfully');
 }
 
@@ -356,7 +358,7 @@ function updateStatisticsUI() {
 
 function initializeMap() {
     try {
-        const map = L.map('map').setView([41.698, -72.731], 13);
+        map = L.map('map').setView([41.698, -72.731], 13);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
@@ -653,9 +655,9 @@ function initializeCharts() {
     console.log('✓ All charts initialized');
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, el) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-    event.target.classList.add('active');
+    el.classList.add('active');
     
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
@@ -663,4 +665,19 @@ function switchTab(tabName) {
     if (targetContent) {
         targetContent.classList.add('active');
     }
-}
+        const targetContent = document.getElementById(`${tabName}-content`);
+        if (targetContent) {
+            targetContent.classList.add('active');
+        }
+
+        // 🔧 FIX: redraw libraries after visibility change
+        if (map) {
+            map.invalidateSize();
+        }
+
+        Chart.helpers.each(Chart.instances, function(instance) {
+            instance.resize();
+        });
+    }
+
+
