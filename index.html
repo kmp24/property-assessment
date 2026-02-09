@@ -35,50 +35,10 @@
             color: var(--text);
         }
 
-        /* VERY VISIBLE scrollbar styling */
-        .content-area::-webkit-scrollbar,
-        .sidebar::-webkit-scrollbar {
-            width: 16px;
-            background: #e0e0e0;
-        }
-
-        .content-area::-webkit-scrollbar-track,
-        .sidebar::-webkit-scrollbar-track {
-            background: #e0e0e0;
-            border-left: 1px solid #cccccc;
-        }
-
-        .content-area::-webkit-scrollbar-thumb,
-        .sidebar::-webkit-scrollbar-thumb {
-            background: #888888;
-            border-radius: 8px;
-            border: 2px solid #e0e0e0;
-        }
-
-        .content-area::-webkit-scrollbar-thumb:hover,
-        .sidebar::-webkit-scrollbar-thumb:hover {
-            background: #555555;
-        }
-
-        .content-area::-webkit-scrollbar-thumb:active,
-        .sidebar::-webkit-scrollbar-thumb:active {
-            background: #333333;
-        }
-
-        /* Force scrollbar to always show */
-        .content-area {
-            overflow-y: scroll !important;
-        }
-
-        .sidebar {
-            overflow-y: scroll !important;
-        }
-
         .app-container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
         }
 
         /* Header */
@@ -160,9 +120,9 @@
         /* Main Content */
         .main-content {
             display: grid;
-            grid-template-columns: 400px 1fr;
-            flex: 1;
-            min-height: 0;
+            grid-template-columns: auto 1fr; /* first column fits content, second fills remaining space */
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
         }
 
@@ -172,7 +132,6 @@
             border-right: 1px solid var(--border);
             overflow-y: auto;
             padding: 2rem;
-            height: 100%;
         }
 
         .info-section {
@@ -233,12 +192,9 @@
 
         /* Content Area */
         .content-area {
-            overflow-y: scroll !important;
-            overflow-x: hidden;
+            overflow-y: auto;
             background: var(--bg);
             padding: 2rem;
-            height: 100%;
-            min-height: 600px;
         }
 
         .stats-row {
@@ -307,8 +263,7 @@
         .tab-content {
             display: none;
             grid-template-columns: 400px 1fr;
-            height: 100%;
-            overflow: hidden;
+            flex: 1;
         }
 
         .tab-content.active {
@@ -342,7 +297,10 @@
             border: 1px solid var(--border);
         }
 
-        #map {
+        #residentialMap,
+        #condoMap,
+        #commercialMap,
+        #vacantMap {
             width: 100%;
             height: 100%;
         }
@@ -380,10 +338,10 @@
 
         <!-- Tabs -->
         <div class="tabs-container">
-            <button class="tab active" onclick="switchTab('residential', this)">Residential</button>
-            <button class="tab" onclick="switchTab('condo', this)">Condo</button>
-            <button class="tab" onclick="switchTab('commercial', this)">Commercial</button>
-            <button class="tab" onclick="switchTab('vacant', this)">Vacant</button>
+            <button class="tab active" onclick="switchTab('residential')">Residential</button>
+            <button class="tab" onclick="switchTab('condo')">Condo</button>
+            <button class="tab" onclick="switchTab('commercial')">Commercial</button>
+            <button class="tab" onclick="switchTab('vacant')">Vacant</button>
         </div>
 
         <!-- Main Content -->
@@ -437,7 +395,7 @@
                     <div class="map-card">
                         <h3>Residential Properties by Neighborhood</h3>
                         <div class="map-wrapper">
-                            <div id="map"></div>
+                            <div id="residentialMap"></div>
                         </div>
                     </div>
 
@@ -470,6 +428,7 @@
                             <canvas id="condoScatter"></canvas>
                         </div>
                     </div>
+                    
                 </aside>
 
                 <div class="content-area">
@@ -498,7 +457,12 @@
                                 <canvas id="condoStyleChart"></canvas>
                             </div>
                         </div>
-
+                        <div class="map-card">
+                            <h3>Condo Properties</h3>
+                            <div class="map-wrapper">
+                                <div id="condoMap"></div>
+                            </div>
+                        </div>
                         <div class="chart-card">
                             <h3>Unit Location Distribution</h3>
                             <div class="chart-wrapper">
@@ -565,6 +529,12 @@
                                 <canvas id="commercialUseChart"></canvas>
                             </div>
                         </div>
+                        <div class="map-card">
+                            <h3>Commercial Properties</h3>
+                            <div class="map-wrapper">
+                                <div id="commercialMap"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -614,6 +584,13 @@
                         <h3>Primary Use Distribution</h3>
                         <div class="chart-wrapper">
                             <canvas id="vacantUseChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="map-card">
+                        <h3>Vacant Properties</h3>
+                        <div class="map-wrapper">
+                            <div id="vacantMap"></div>
                         </div>
                     </div>
                 </div>

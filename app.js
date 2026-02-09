@@ -1,4 +1,5 @@
-// Property Assessment Dashboard - Diagnostic Version with Fallback Data
+// Property Assessment Dashboard - GeoJSON Version
+// Reads all properties from a single GeoJSON file
 
 let allProperties = [];
 let propertiesByType = {
@@ -14,215 +15,83 @@ let statistics = {
     commercial: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 },
     vacant: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 }
 };
-
-let map;
-
+let residentialMap, condoMap, commercialMap, vacantMap;
+// Configuration: Map your shapefile field names to what the app expects
 const FIELD_MAPPING = {
-    parcelId: 'parcelId',
-    address: 'address',
-    owner: 'owner',
-    propertyType: 'propertyType',
+    parcelId: 'parcelId',           // Your parcel ID field name
+    address: 'address',             // Your address field name
+    owner: 'owner',                 // Your owner field name
+    propertyType: 'propertyType',   // Field that indicates Residential/Condo/Commercial/Vacant
+    
+    // Residential/Vacant fields
     neighborhood: 'neighborhood',
     designStyle: 'designStyle',
     acreage: 'acreage',
     bedrooms: 'bedrooms',
     bathrooms: 'bathrooms',
+    
+    // Condo fields
     complex: 'complex',
     style: 'style',
     location: 'location',
+    
+    // Commercial fields
     zone: 'zone',
     buildingClass: 'buildingClass',
     useCategory: 'useCategory',
+    
+    // Common fields
     sqft: 'sqft',
     yearBuilt: 'yearBuilt',
     assessment2020: 'assessment2020',
     assessment2025: 'assessment2025'
 };
 
-// Fallback sample data
-const SAMPLE_DATA = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "properties": {
-                "parcelId": "R001",
-                "address": "123 Main Street",
-                "owner": "Sample Property",
-                "propertyType": "Residential",
-                "designStyle": "Colonial",
-                "acreage": 0.25,
-                "bedrooms": 3,
-                "bathrooms": 2,
-                "sqft": 2000,
-                "yearBuilt": 1995,
-                "assessment2020": 250000,
-                "assessment2025": 320000
-            },
-            "geometry": { "type": "Point", "coordinates": [-72.729, 41.698] }
-        },
-        {
-            "type": "Feature",
-            "properties": {
-                "parcelId": "R002",
-                "address": "456 Oak Avenue",
-                "owner": "Sample Property",
-                "propertyType": "Residential",
-                "designStyle": "Ranch",
-                "acreage": 0.35,
-                "bedrooms": 4,
-                "bathrooms": 2.5,
-                "sqft": 2400,
-                "yearBuilt": 2005,
-                "assessment2020": 280000,
-                "assessment2025": 355000
-            },
-            "geometry": { "type": "Point", "coordinates": [-72.735, 41.701] }
-        },
-        {
-            "type": "Feature",
-            "properties": {
-                "parcelId": "C001",
-                "address": "100 Condo Lane Unit 1A",
-                "owner": "Sample Property",
-                "propertyType": "Condo",
-                "style": "Condominium",
-                "location": "First Floor",
-                "sqft": 1200,
-                "bedrooms": 2,
-                "bathrooms": 2,
-                "yearBuilt": 2010,
-                "assessment2020": 180000,
-                "assessment2025": 245000
-            },
-            "geometry": { "type": "Point", "coordinates": [-72.730, 41.700] }
-        },
-        {
-            "type": "Feature",
-            "properties": {
-                "parcelId": "COM001",
-                "address": "500 Business Parkway",
-                "owner": "Sample Property",
-                "propertyType": "Commercial",
-                "zone": "Business",
-                "buildingClass": "Masonry",
-                "useCategory": "Office",
-                "sqft": 15000,
-                "yearBuilt": 2000,
-                "assessment2020": 1500000,
-                "assessment2025": 1850000
-            },
-            "geometry": { "type": "Point", "coordinates": [-72.728, 41.695] }
-        },
-        {
-            "type": "Feature",
-            "properties": {
-                "parcelId": "V001",
-                "address": "Vacant Lot Development Road",
-                "owner": "Sample Property",
-                "propertyType": "Vacant",
-                "zone": "Residential",
-                "acreage": 2.5,
-                "assessment2020": 95000,
-                "assessment2025": 115000
-            },
-            "geometry": { "type": "Point", "coordinates": [-72.737, 41.702] }
-        }
-    ]
-};
-
+// Wait for all resources to load
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('✓ DOM loaded, waiting for libraries...');
-    showStatus('Loading libraries...');
+    console.log('DOM loaded, waiting for libraries...');
     
     const checkLibraries = setInterval(function() {
         if (typeof Chart !== 'undefined' && typeof L !== 'undefined') {
             clearInterval(checkLibraries);
-            console.log('✓ All libraries loaded');
-            showStatus('Libraries loaded. Loading property data...');
+            console.log('All libraries loaded, loading property data...');
             loadPropertyData();
         }
     }, 100);
 });
 
-function showStatus(message) {
-    // Create status overlay if it doesn't exist
-    let statusDiv = document.getElementById('status-overlay');
-    if (!statusDiv) {
-        statusDiv = document.createElement('div');
-        statusDiv.id = 'status-overlay';
-        statusDiv.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10000;
-            text-align: center;
-            min-width: 300px;
-        `;
-        document.body.appendChild(statusDiv);
-    }
-    statusDiv.innerHTML = `<p style="margin: 0; font-size: 1.1rem;">${message}</p>`;
-}
-
-function hideStatus() {
-    const statusDiv = document.getElementById('status-overlay');
-    if (statusDiv) {
-        statusDiv.remove();
-    }
-}
-
+// Load GeoJSON data
 async function loadPropertyData() {
     try {
-        console.log('Attempting to fetch properties.geojson...');
-        showStatus('Fetching properties.geojson...');
-        
+        console.log('Fetching properties.geojson...');
         const response = await fetch('properties.geojson');
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const geojson = await response.json();
-        console.log(`✓ Loaded ${geojson.features.length} properties from GeoJSON`);
-        showStatus(`Loaded ${geojson.features.length} properties. Processing...`);
+        console.log(`Loaded ${geojson.features.length} properties from GeoJSON`);
         
+        // Process features
         processGeoJSON(geojson);
+        
+        // Initialize app
         initializeApp();
-        hideStatus();
         
     } catch (error) {
-        console.error('❌ Error loading property data:', error);
-        console.warn('⚠️ Using sample data instead');
-        
-        showStatus(`
-            <div style="color: #d97706;">
-                <p style="margin: 0 0 1rem 0; font-weight: bold;">⚠️ Could not load properties.geojson</p>
-                <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Error: ${error.message}</p>
-                <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Using sample data to demonstrate functionality.</p>
-                <button onclick="hideStatus()" style="padding: 0.5rem 1rem; cursor: pointer; background: #6b8cae; color: white; border: none; border-radius: 4px;">Continue with Sample Data</button>
-            </div>
-        `);
-        
-        // Use sample data
-        setTimeout(() => {
-            processGeoJSON(SAMPLE_DATA);
-            initializeApp();
-        }, 1000);
+        console.error('Error loading property data:', error);
+        alert('Error loading property data. Make sure properties.geojson exists in the same directory.');
     }
 }
 
+// Process GeoJSON and categorize properties
 function processGeoJSON(geojson) {
-    console.log('Processing GeoJSON features...');
-    
     geojson.features.forEach(feature => {
         const props = feature.properties;
         const geometry = feature.geometry;
         
+        // Get centroid coordinates
         let lat, lng;
         if (props.lat && props.lng) {
             lat = props.lat;
@@ -231,6 +100,7 @@ function processGeoJSON(geojson) {
             lng = geometry.coordinates[0];
             lat = geometry.coordinates[1];
         } else if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
+            // Calculate centroid (simple average of coordinates)
             const coords = geometry.type === 'Polygon' 
                 ? geometry.coordinates[0] 
                 : geometry.coordinates[0][0];
@@ -238,11 +108,14 @@ function processGeoJSON(geojson) {
             lat = coords.reduce((sum, c) => sum + c[1], 0) / coords.length;
         }
         
+        // Create property object
         const property = {
             parcelId: props[FIELD_MAPPING.parcelId] || 'Unknown',
             address: props[FIELD_MAPPING.address] || 'Unknown',
             owner: props[FIELD_MAPPING.owner] || 'Unknown',
             propertyType: normalizePropertyType(props[FIELD_MAPPING.propertyType]),
+            
+            // Optional fields
             neighborhood: props[FIELD_MAPPING.neighborhood],
             designStyle: props[FIELD_MAPPING.designStyle],
             acreage: parseFloat(props[FIELD_MAPPING.acreage]) || 0,
@@ -256,22 +129,29 @@ function processGeoJSON(geojson) {
             useCategory: props[FIELD_MAPPING.useCategory],
             sqft: parseInt(props[FIELD_MAPPING.sqft]) || 0,
             yearBuilt: parseInt(props[FIELD_MAPPING.yearBuilt]) || 0,
+            
+            // Assessment values
             assessment2020: parseFloat(props[FIELD_MAPPING.assessment2020]) || 0,
             assessment2025: parseFloat(props[FIELD_MAPPING.assessment2025]) || 0,
+            
+            // Coordinates
             lat: lat,
             lng: lng,
+            
+            // Keep original geometry for polygon display if needed
             geometry: geometry
         };
         
         allProperties.push(property);
         
+        // Categorize by type
         const type = property.propertyType.toLowerCase();
         if (propertiesByType[type]) {
             propertiesByType[type].push(property);
         }
     });
     
-    console.log('✓ Properties categorized:', {
+    console.log('Properties by type:', {
         residential: propertiesByType.residential.length,
         condo: propertiesByType.condo.length,
         commercial: propertiesByType.commercial.length,
@@ -279,36 +159,49 @@ function processGeoJSON(geojson) {
     });
 }
 
+// Normalize property type names
 function normalizePropertyType(type) {
     if (!type) return 'residential';
     
     const typeStr = type.toString().toLowerCase();
     
+    // Residential variations
     if (typeStr.includes('res') || typeStr.includes('single') || typeStr.includes('family')) {
         return 'residential';
     }
+    // Condo variations
     if (typeStr.includes('condo') || typeStr.includes('town')) {
         return 'condo';
     }
+    // Commercial variations
     if (typeStr.includes('comm') || typeStr.includes('business') || typeStr.includes('industrial')) {
         return 'commercial';
     }
+    // Vacant variations
     if (typeStr.includes('vac') || typeStr.includes('land')) {
         return 'vacant';
     }
     
-    return 'residential';
+    return 'residential'; // default
 }
 
 function initializeApp() {
-    console.log('Initializing application...');
+    // Calculate statistics
     calculateStatistics();
+    
+    // Initialize map
     initializeMap();
+    
+    // Initialize all charts
+    initializeCharts();
+    
+    // Update statistics in UI
     updateStatisticsUI();
-    initializeCharts(); 
-    console.log('✓ Application initialized successfully');
+    
+    console.log('Application initialized successfully');
 }
 
+// Calculate statistics from property data
 function calculateStatistics() {
     ['residential', 'condo', 'commercial', 'vacant'].forEach(type => {
         const properties = propertiesByType[type];
@@ -318,9 +211,11 @@ function calculateStatistics() {
             parcelCount: properties.length
         };
     });
-    console.log('✓ Statistics calculated');
+    
+    console.log('Statistics calculated:', statistics);
 }
 
+// Update statistics in the UI
 function updateStatisticsUI() {
     const formatCurrency = (num) => '$' + num.toLocaleString('en-US');
     const formatNumber = (num) => num.toLocaleString('en-US');
@@ -352,73 +247,81 @@ function updateStatisticsUI() {
     updateStatCard('vacant', statistics.vacant.totalAssessment2020, 
                    statistics.vacant.totalAssessment2025, 
                    statistics.vacant.parcelCount);
-    
-    console.log('✓ Statistics UI updated');
 }
 
+// Initialize Leaflet Map with all properties
 function initializeMap() {
     try {
-        map = L.map('map').setView([41.698, -72.731], 13);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Initialize maps for each tab
+        residentialMap = L.map('residentialMap').setView([41.698, -72.731], 13);
+        condoMap = L.map('condoMap').setView([41.698, -72.731], 13);
+        commercialMap = L.map('commercialMap').setView([41.698, -72.731], 13);
+        vacantMap = L.map('vacantMap').setView([41.698, -72.731], 13);
+
+        // Create separate tile layer for each map (can't share!)
+        const tileLayerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        const tileLayerOptions = {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 19
-        }).addTo(map);
-        
+        };
+
+        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(residentialMap);
+        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(condoMap);
+        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(commercialMap);
+        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(vacantMap);
+
         const colors = {
             residential: '#e55d75',
             condo: '#f59e0b',
             commercial: '#6b8cae',
             vacant: '#10b981'
         };
-        
-        let bounds = [];
-        
-        allProperties.forEach(prop => {
-            if (prop.lat && prop.lng) {
-                bounds.push([prop.lat, prop.lng]);
-                
-                const color = colors[prop.propertyType] || '#666666';
-                const change = prop.assessment2020 > 0 
-                    ? ((prop.assessment2025 - prop.assessment2020) / prop.assessment2020 * 100).toFixed(1)
-                    : 0;
-                
-                const popupContent = `
-                    <div style="min-width: 220px;">
-                        <strong>${prop.address}</strong><br>
-                        <span style="color: ${color}; font-weight: bold;">${prop.propertyType.toUpperCase()}</span><br>
-                        <strong>Parcel:</strong> ${prop.parcelId}<br>
-                        ${prop.sqft > 0 ? `<strong>Sq Ft:</strong> ${prop.sqft.toLocaleString()}<br>` : ''}
-                        <strong>2020:</strong> $${prop.assessment2020.toLocaleString()}<br>
-                        <strong>2025:</strong> $${prop.assessment2025.toLocaleString()}<br>
-                        <strong>Change:</strong> <span style="color: ${change > 0 ? 'green' : 'red'}">${change > 0 ? '+' : ''}${change}%</span>
-                    </div>
-                `;
-                
-                const marker = L.circleMarker([prop.lat, prop.lng], {
-                    radius: 6,
-                    fillColor: color,
-                    color: '#ffffff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.7
-                });
-                
-                marker.bindPopup(popupContent);
-                marker.addTo(map);
-            }
-        });
-        
-        if (bounds.length > 0) {
-            map.fitBounds(bounds, { padding: [50, 50] });
-        }
-        
-        console.log('✓ Map initialized with', allProperties.length, 'markers');
+
+        // Add markers to each map individually
+        propertiesByType.residential.forEach(prop => addMarker(prop, residentialMap, colors.residential));
+        propertiesByType.condo.forEach(prop => addMarker(prop, condoMap, colors.condo));
+        propertiesByType.commercial.forEach(prop => addMarker(prop, commercialMap, colors.commercial));
+        propertiesByType.vacant.forEach(prop => addMarker(prop, vacantMap, colors.vacant));
+
+        console.log('All maps initialized successfully');
     } catch (error) {
-        console.error('❌ Error initializing map:', error);
+        console.error('Error initializing maps:', error);
     }
 }
 
+// Helper function to add markers
+function addMarker(prop, map, color) {
+    if (!prop.lat || !prop.lng) return;
+
+    const change = prop.assessment2020 > 0
+        ? ((prop.assessment2025 - prop.assessment2020) / prop.assessment2020 * 100).toFixed(1)
+        : 0;
+
+    const popupContent = `
+        <div style="min-width: 220px;">
+            <strong>${prop.address}</strong><br>
+            <span style="color: ${color}; font-weight: bold;">${prop.propertyType.toUpperCase()}</span><br>
+            <strong>Parcel:</strong> ${prop.parcelId}<br>
+            ${prop.designStyle ? `<strong>Style:</strong> ${prop.designStyle}<br>` : ''}
+            ${prop.sqft > 0 ? `<strong>Sq Ft:</strong> ${prop.sqft.toLocaleString()}<br>` : ''}
+            <strong>2020:</strong> $${prop.assessment2020.toLocaleString()}<br>
+            <strong>2025:</strong> $${prop.assessment2025.toLocaleString()}<br>
+            <strong>Change:</strong> <span style="color: ${change > 0 ? 'green' : 'red'}">${change > 0 ? '+' : ''}${change}%</span>
+        </div>
+    `;
+
+    L.circleMarker([prop.lat, prop.lng], {
+        radius: 6,
+        fillColor: color,
+        color: '#ffffff',
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.7
+    }).bindPopup(popupContent).addTo(map);
+}
+
+
+// Aggregate properties by field
 function aggregateByField(properties, field, valueField = 'assessment2025') {
     const aggregated = {};
     properties.forEach(prop => {
@@ -437,9 +340,8 @@ function aggregateByField(properties, field, valueField = 'assessment2025') {
     })).sort((a, b) => b.value - a.value);
 }
 
+// Initialize all charts (same as before but using propertiesByType)
 function initializeCharts() {
-    console.log('Initializing charts...');
-    
     // Residential Scatter
     new Chart(document.getElementById('residentialScatter'), {
         type: 'scatter',
@@ -459,7 +361,7 @@ function initializeCharts() {
             scales: {
                 x: { title: { display: true, text: 'Acreage' } },
                 y: { 
-                    title: { display: true, text: 'Value ($)' },
+                    title: { display: true, text: 'Assessed Value ($)' },
                     ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
                 }
             }
@@ -501,7 +403,7 @@ function initializeCharts() {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { title: { display: true, text: 'Sq Ft' } },
+                x: { title: { display: true, text: 'Finished Area (sq ft)' } },
                 y: { 
                     title: { display: true, text: 'Value ($)' },
                     ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
@@ -652,27 +554,31 @@ function initializeCharts() {
         }
     });
     
-    console.log('✓ All charts initialized');
+    console.log('All charts initialized from GeoJSON data');
 }
 
-function switchTab(tabName, el) {
+function switchTab(tabName) {
+    // Update active tab button
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-    el.classList.add('active');
+    event.target.classList.add('active');
 
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.remove('active');
-    });
-
+    // Show only the selected tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     const targetContent = document.getElementById(`${tabName}-content`);
     if (targetContent) {
         targetContent.classList.add('active');
     }
 
-    if (tabName === 'residential' && map) {
-        setTimeout(() => map.invalidateSize(), 200);
-    }
+    // Fix map display after tab switch
+    setTimeout(() => {
+        if (tabName === 'residential' && residentialMap) {
+            residentialMap.invalidateSize();
+        } else if (tabName === 'condo' && condoMap) {
+            condoMap.invalidateSize();
+        } else if (tabName === 'commercial' && commercialMap) {
+            commercialMap.invalidateSize();
+        } else if (tabName === 'vacant' && vacantMap) {
+            vacantMap.invalidateSize();
+        }
+    }, 100);
 }
-
-
-
-
