@@ -658,26 +658,21 @@ function initializeCharts() {
 function switchTab(tabName, el) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     el.classList.add('active');
-    
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    
+
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+
     const targetContent = document.getElementById(`${tabName}-content`);
     if (targetContent) {
         targetContent.classList.add('active');
     }
-        const targetContent = document.getElementById(`${tabName}-content`);
-        if (targetContent) {
-            targetContent.classList.add('active');
-        }
 
-        // 🔧 FIX: redraw libraries after visibility change
-        if (map) {
-            map.invalidateSize();
-        }
-
-        Chart.helpers.each(Chart.instances, function(instance) {
-            instance.resize();
-        });
+    if (tabName === 'residential' && map) {
+        setTimeout(() => map.invalidateSize(), 200);
     }
+}
+
+
 
 
