@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Assessment Dashboard - Newington 2025 Revaluation</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6b8cae;
+            --primary-dark: #4a6b8a;
+            --bg: #f5f5f5;
+            --text: #333333;
+            --text-light: #666666;
+            --border: #dddddd;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .logo {
+            width: 60px;
+            height: 60px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .header-title h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .header-title p {
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+
+        .home-btn {
+            margin-left: auto;
+            padding: 0.75rem 1.5rem;
+            border: 2px solid var(--border);
+            background: white;
+            cursor: pointer;
+            font-size: 1.25rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .home-btn:hover {
+            background: var(--bg);
+        }
+
+        /* Tabs */
+        .tabs-container {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+        }
+
+        .tab {
+            padding: 1rem 2.5rem;
+            border: none;
+            background: var(--primary);
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: var(--primary-dark);
+        }
+
+        .tab.active {
+            background: var(--primary-dark);
+            font-weight: 600;
+        }
+
+        /* Main Content */
+        .main-content {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: white;
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        .info-section {
+            margin-bottom: 2rem;
+        }
+
+        .info-section h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .info-section p {
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: var(--text-light);
+            margin-bottom: 0.75rem;
+        }
+
+        .info-section ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-section li {
+            font-size: 0.875rem;
+            line-height: 1.8;
+            padding-left: 1.25rem;
+            position: relative;
+        }
+
+        .info-section li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .scatter-chart-container {
+            margin-top: 2rem;
+            background: white;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .scatter-chart-container h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .scatter-chart {
+            height: 250px;
+        }
+
+        /* Content Area */
+        .content-area {
+            overflow-y: auto;
+            background: var(--bg);
+            padding: 2rem;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-icon {
+            font-size: 48px;
+            margin-bottom: 1rem;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-light);
+            margin-top: 0.5rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .chart-wrapper {
+            height: 350px;
+            position: relative;
+        }
+
+        .tab-content {
+            display: none;
+            grid-template-columns: 400px 1fr;
+            flex: 1;
+        }
+
+        .tab-content.active {
+            display: grid;
+        }
+
+        .info-box {
+            background: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .map-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 2rem;
+        }
+
+        .map-wrapper {
+            flex: 1;
+            position: relative;
+            background: #e0e7ed;
+            border: 1px solid var(--border);
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 350px 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content,
+            .tab-content.active {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">🏛️</div>
+            <div class="header-title">
+                <h1>What affects my assessment value?</h1>
+                <p>Click a property category to learn more</p>
+            </div>
+            <button class="home-btn">🏠</button>
+        </header>
+
+        <!-- Tabs -->
+        <div class="tabs-container">
+            <button class="tab active" onclick="switchTab('residential')">Residential</button>
+            <button class="tab" onclick="switchTab('condo')">Condo</button>
+            <button class="tab" onclick="switchTab('commercial')">Commercial</button>
+            <button class="tab" onclick="switchTab('vacant')">Vacant</button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- RESIDENTIAL TAB -->
+            <div id="residential-content" class="tab-content active">
+                <aside class="sidebar">
+                    <div class="info-section">
+                        <h3>Understanding Your Property Assessment Value</h3>
+                        <p>Property values are determined by analyzing a variety of factors that influence market demand and overall worth.</p>
+                        <ul>
+                            <li>Location</li>
+                            <li>Condition of the property</li>
+                            <li>Total living area</li>
+                            <li>Number of bedrooms</li>
+                            <li>Number of bathrooms</li>
+                        </ul>
+                    </div>
+
+                    <div class="scatter-chart-container">
+                        <h4>2025 Land Assessment Value vs. Acreage</h4>
+                        <div class="scatter-chart">
+                            <canvas id="residentialScatter"></canvas>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="content-area">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$2,041,376,780</div>
+                            <div class="stat-label">Total 2020 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$3,173,895,300</div>
+                            <div class="stat-label">Total 2025 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏠</div>
+                            <div class="stat-value">8,774</div>
+                            <div class="stat-label">Parcels Assessed</div>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        One factor of revaluation is <strong>neighborhoods</strong>, which are delineated based on physical, economic, environmental, and governmental influences.
+                    </div>
+
+                    <div class="map-card">
+                        <h3>Residential Properties by Neighborhood</h3>
+                        <div class="map-wrapper">
+                            <div id="map"></div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card full-width">
+                        <h3>Average Building Assessment by Design</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="residentialDesignChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONDO TAB -->
+            <div id="condo-content" class="tab-content">
+                <aside class="sidebar">
+                    <div class="info-section">
+                        <h3>Understanding Your Property Assessment Value</h3>
+                        <p>Property values are determined by analyzing a variety of factors in condo units.</p>
+                        <ul>
+                            <li>Unit location</li>
+                            <li>Condition of the property</li>
+                            <li>Total living area</li>
+                            <li>Style (condominium vs. townhouse)</li>
+                        </ul>
+                    </div>
+
+                    <div class="scatter-chart-container">
+                        <h4>2025 Assessed Value vs. Finished Area</h4>
+                        <div class="scatter-chart">
+                            <canvas id="condoScatter"></canvas>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="content-area">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$405,631,960</div>
+                            <div class="stat-label">Total 2020 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$668,580,600</div>
+                            <div class="stat-label">Total 2025 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏢</div>
+                            <div class="stat-value">2,535</div>
+                            <div class="stat-label">Parcels Assessed</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>2025 Average Value by Style</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="condoStyleChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <h3>Unit Location Distribution</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="condoLocationChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COMMERCIAL TAB -->
+            <div id="commercial-content" class="tab-content">
+                <aside class="sidebar">
+                    <div class="info-section">
+                        <h3>Understanding Your Property Assessment Value</h3>
+                        <p>Commercial property values vary based on multiple factors.</p>
+                        <ul>
+                            <li>Location</li>
+                            <li>Total finished area</li>
+                            <li>Zone</li>
+                            <li>Building use</li>
+                            <li>Material class</li>
+                        </ul>
+                    </div>
+
+                    <div class="scatter-chart-container">
+                        <h4>Building Value vs. Finished Area</h4>
+                        <div class="scatter-chart">
+                            <canvas id="commercialScatter"></canvas>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="content-area">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$1,271,887,130</div>
+                            <div class="stat-label">Total 2020 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$1,793,219,100</div>
+                            <div class="stat-label">Total 2025 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏢</div>
+                            <div class="stat-value">557</div>
+                            <div class="stat-label">Parcels Assessed</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Building Assessment by Class</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="commercialClassChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <h3>Use Category Distribution</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="commercialUseChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VACANT TAB -->
+            <div id="vacant-content" class="tab-content">
+                <aside class="sidebar">
+                    <div class="info-section">
+                        <h3>Understanding Your Property Assessment Value</h3>
+                        <p>Vacant property values depend on:</p>
+                        <ul>
+                            <li>Location</li>
+                            <li>Total acreage</li>
+                            <li>Zone</li>
+                            <li>Primary use</li>
+                        </ul>
+                    </div>
+
+                    <div class="scatter-chart-container">
+                        <h4>Assessment Value vs. Acreage</h4>
+                        <div class="scatter-chart">
+                            <canvas id="vacantScatter"></canvas>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="content-area">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$75,076,560</div>
+                            <div class="stat-label">Total 2020 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💲</div>
+                            <div class="stat-value">$85,578,600</div>
+                            <div class="stat-label">Total 2025 Assessment</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏞️</div>
+                            <div class="stat-value">587</div>
+                            <div class="stat-label">Parcels Assessed</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card full-width">
+                        <h3>Primary Use Distribution</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="vacantUseChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Main Application Script (loads properties.geojson) -->
+    <script src="app.js"></script>
+</body>
+</html>
