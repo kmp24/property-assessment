@@ -35,10 +35,33 @@
             color: var(--text);
         }
 
+        /* Better scrollbar styling */
+        .content-area::-webkit-scrollbar,
+        .sidebar::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .content-area::-webkit-scrollbar-track,
+        .sidebar::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        .content-area::-webkit-scrollbar-thumb,
+        .sidebar::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 6px;
+        }
+
+        .content-area::-webkit-scrollbar-thumb:hover,
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+
         .app-container {
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
         }
 
         /* Header */
@@ -122,6 +145,7 @@
             display: grid;
             grid-template-columns: 400px 1fr;
             flex: 1;
+            min-height: 0;
             overflow: hidden;
         }
 
@@ -131,6 +155,7 @@
             border-right: 1px solid var(--border);
             overflow-y: auto;
             padding: 2rem;
+            height: 100%;
         }
 
         .info-section {
@@ -192,8 +217,10 @@
         /* Content Area */
         .content-area {
             overflow-y: auto;
+            overflow-x: hidden;
             background: var(--bg);
             padding: 2rem;
+            height: 100%;
         }
 
         .stats-row {
@@ -262,7 +289,8 @@
         .tab-content {
             display: none;
             grid-template-columns: 400px 1fr;
-            flex: 1;
+            height: 100%;
+            overflow: hidden;
         }
 
         .tab-content.active {
