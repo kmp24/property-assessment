@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Property Assessment Dashboard - Newington 2025 Revaluation</title>
     
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-          crossorigin=""/>
+    <!-- MapLibre GL JS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    
+    <!-- PMTiles -->
+    <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -338,10 +340,10 @@
 
         <!-- Tabs -->
         <div class="tabs-container">
-            <button class="tab active" onclick="switchTab('residential')">Residential</button>
-            <button class="tab" onclick="switchTab('condo')">Condo</button>
-            <button class="tab" onclick="switchTab('commercial')">Commercial</button>
-            <button class="tab" onclick="switchTab('vacant')">Vacant</button>
+            <button class="tab active" onclick="switchTab(event, 'residential')">Residential</button>
+            <button class="tab" onclick="switchTab(event, 'condo')">Condo</button>
+            <button class="tab" onclick="switchTab(event, 'commercial')">Commercial</button>
+            <button class="tab" onclick="switchTab(event, 'vacant')">Vacant</button>
         </div>
 
         <!-- Main Content -->
@@ -373,17 +375,17 @@
                     <div class="stats-row">
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$2,041,376,780</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2020 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$3,173,895,300</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2025 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">🏠</div>
-                            <div class="stat-value">8,774</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Parcels Assessed</div>
                         </div>
                     </div>
@@ -435,17 +437,17 @@
                     <div class="stats-row">
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$405,631,960</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2020 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$668,580,600</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2025 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">🏢</div>
-                            <div class="stat-value">2,535</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Parcels Assessed</div>
                         </div>
                     </div>
@@ -500,17 +502,17 @@
                     <div class="stats-row">
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$1,271,887,130</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2020 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$1,793,219,100</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2025 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">🏢</div>
-                            <div class="stat-value">557</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Parcels Assessed</div>
                         </div>
                     </div>
@@ -565,17 +567,17 @@
                     <div class="stats-row">
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$75,076,560</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2020 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">💲</div>
-                            <div class="stat-value">$85,578,600</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Total 2025 Assessment</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">🏞️</div>
-                            <div class="stat-value">587</div>
+                            <div class="stat-value">Loading...</div>
                             <div class="stat-label">Parcels Assessed</div>
                         </div>
                     </div>
@@ -598,15 +600,89 @@
         </div>
     </div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""></script>
-    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" style="
+        display: flex;
+        position: fixed;
+        inset: 0;
+        background: rgba(245,245,245,0.92);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 1.5rem;">
+        <div style="
+            width: 48px; height: 48px;
+            border: 5px solid #dddddd;
+            border-top-color: #6b8cae;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;">
+        </div>
+        <p id="loading-message" style="
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 1rem;
+            color: #333;
+            font-weight: 500;">
+            Loading…
+        </p>
+    </div>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+
+    <!-- File Picker Overlay (shown when parcels.parquet not found automatically) -->
+    <div id="file-picker-overlay" style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(245,245,245,0.96);
+        z-index: 9998;
+        align-items: center;
+        justify-content: center;">
+        <div style="
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+            padding: 2.5rem;
+            max-width: 440px;
+            width: 90%;
+            text-align: center;
+            font-family: 'IBM Plex Sans', sans-serif;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🗺️</div>
+            <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem;">
+                Load Your Parcel Data
+            </h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.6;">
+                Select your <strong>GeoParquet</strong> file (.parquet) containing
+                all property parcels. The app will process it directly in your browser.
+            </p>
+            <label for="parquet-file-input" style="
+                display: inline-block;
+                padding: 0.75rem 1.5rem;
+                background: #6b8cae;
+                color: white;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+                font-size: 0.95rem;
+                transition: background 0.2s;">
+                📂 Choose Parquet File
+            </label>
+            <input id="parquet-file-input"
+                type="file"
+                accept=".parquet"
+                style="display: none;"
+                onchange="handleFileSelect(this)">
+            <p style="color: #aaa; font-size: 0.8rem; margin-top: 1.25rem;">
+                File is processed locally — nothing is uploaded to any server.
+            </p>
+        </div>
+    </div>
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-    <!-- Main Application Script (loads properties.geojson) -->
-    <script src="app.js"></script>
+    <!-- Main Application Script (ES module - reads PMTiles with MapLibre) -->
+    <script type="module" src="app.js"></script>
 </body>
 </html>

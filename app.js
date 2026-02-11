@@ -1,584 +1,776 @@
-// Property Assessment Dashboard - GeoJSON Version
-// Reads all properties from a single GeoJSON file
+// Property Assessment Dashboard - MapLibre GL JS Version
+// With dynamic data aggregation and chart population
 
-let allProperties = [];
-let propertiesByType = {
-    residential: [],
-    condo: [],
-    commercial: [],
-    vacant: []
-};
-
-let statistics = {
-    residential: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 },
-    condo: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 },
-    commercial: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 },
-    vacant: { totalAssessment2020: 0, totalAssessment2025: 0, parcelCount: 0 }
-};
 let residentialMap, condoMap, commercialMap, vacantMap;
-// Configuration: Map your shapefile field names to what the app expects
-const FIELD_MAPPING = {
-    parcelId: 'parcelId',           // Your parcel ID field name
-    address: 'address',             // Your address field name
-    owner: 'owner',                 // Your owner field name
-    propertyType: 'propertyType',   // Field that indicates Residential/Condo/Commercial/Vacant
-    
-    // Residential/Vacant fields
-    neighborhood: 'neighborhood',
-    designStyle: 'designStyle',
-    acreage: 'acreage',
-    bedrooms: 'bedrooms',
-    bathrooms: 'bathrooms',
-    
-    // Condo fields
-    complex: 'complex',
-    style: 'style',
-    location: 'location',
-    
-    // Commercial fields
-    zone: 'zone',
-    buildingClass: 'buildingClass',
-    useCategory: 'useCategory',
-    
-    // Common fields
-    sqft: 'sqft',
-    yearBuilt: 'yearBuilt',
-    assessment2020: 'assessment2020',
-    assessment2025: 'assessment2025'
+let parcelData = { residential: [], condo: [], commercial: [], vacant: [] };
+let statsData = { residential: {}, condo: {}, commercial: {}, vacant: {} };
+let dataCollected = { residential: false, condo: false, commercial: false, vacant: false };
+
+const COLORS = {
+    residential: '#e55d75',
+    condo:       '#f59e0b',
+    commercial:  '#6b8cae',
+    vacant:      '#10b981'
 };
 
-// Wait for all resources to load
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, waiting for libraries...');
+// ─── Startup ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+    console.log('Starting app...');
     
-    const checkLibraries = setInterval(function() {
-        if (typeof Chart !== 'undefined' && typeof L !== 'undefined') {
-            clearInterval(checkLibraries);
-            console.log('All libraries loaded, loading property data...');
-            loadPropertyData();
+    try {
+        showLoading('Checking libraries...');
+        
+        if (typeof maplibregl === 'undefined') {
+            throw new Error('MapLibre GL JS not loaded');
         }
-    }, 100);
+        if (typeof pmtiles === 'undefined') {
+            throw new Error('PMTiles library not loaded');
+        }
+        
+        showLoading('Initializing maps...');
+        await initializeMaps();
+        
+    } catch (err) {
+        console.error('Startup error:', err);
+        showError(`Startup failed: ${err.message}`);
+    }
 });
 
-// Load GeoJSON data
-async function loadPropertyData() {
+// ─── Maps ─────────────────────────────────────────────────────────────────────
+async function initializeMaps() {
     try {
-        console.log('Fetching properties.geojson...');
-        const response = await fetch('properties.geojson');
+        const center = [-72.75, 41.76];
+        const zoom = 13;
+
+        // Create maps
+        residentialMap = createBasicMap('residentialMap', center, zoom);
+        condoMap       = createBasicMap('condoMap', center, zoom);
+        commercialMap  = createBasicMap('commercialMap', center, zoom);
+        vacantMap      = createBasicMap('vacantMap', center, zoom);
+
+        console.log('✓ Base maps created');
+        
+        // Try to load PMTiles
+        showLoading('Loading parcel data...');
+        
+        try {
+            await loadPMTiles();
+            console.log('✓ PMTiles loaded');
+        } catch (pmErr) {
+            console.warn('PMTiles error:', pmErr.message);
+            showPMTilesError(pmErr.message);
+        }
+        
+        hideLoading();
+        console.log('✓ Initialization complete');
+        
+    } catch (err) {
+        console.error('Error initializing maps:', err);
+        showError(`Failed to load maps: ${err.message}`);
+    }
+}
+
+function createBasicMap(containerId, center, zoom) {
+    const map = new maplibregl.Map({
+        container: containerId,
+        style: {
+            version: 8,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: '© OpenStreetMap contributors'
+                }
+            },
+            layers: [{
+                id: 'osm',
+                type: 'raster',
+                source: 'osm'
+            }]
+        },
+        center: center,
+        zoom: zoom
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    
+    return map;
+}
+
+async function loadPMTiles() {
+    try {
+        // Check if file exists
+        console.log('Checking for parcels.pmtiles...');
+        const response = await fetch('parcels.pmtiles', { method: 'HEAD' });
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`parcels.pmtiles not found (HTTP ${response.status}). Please place parcels.pmtiles in the same folder as index.html`);
         }
         
-        const geojson = await response.json();
-        console.log(`Loaded ${geojson.features.length} properties from GeoJSON`);
+        console.log('parcels.pmtiles found, setting up protocol...');
         
-        // Process features
-        processGeoJSON(geojson);
+        // Set up PMTiles protocol
+        const protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol('pmtiles', protocol.tile);
         
-        // Initialize app
-        initializeApp();
+        // Don't try to load metadata - let MapLibre handle it
+        console.log('Protocol configured, adding layers...');
         
-    } catch (error) {
-        console.error('Error loading property data:', error);
-        alert('Error loading property data. Make sure properties.geojson exists in the same directory.');
+        // Add layers to each map - they'll load data as needed
+        await Promise.all([
+            addPMTilesLayer(residentialMap, 'residential'),
+            addPMTilesLayer(condoMap, 'condo'),
+            addPMTilesLayer(commercialMap, 'commercial'),
+            addPMTilesLayer(vacantMap, 'vacant')
+        ]);
+        
+        console.log('✓ Layers added successfully');
+        
+    } catch (err) {
+        console.error('PMTiles loading failed:', err);
+        throw err;
     }
 }
 
-// Process GeoJSON and categorize properties
-function processGeoJSON(geojson) {
-    geojson.features.forEach(feature => {
-        const props = feature.properties;
-        const geometry = feature.geometry;
+// Remove the problematic loadParcelData function - we don't need it
+// Data will be collected when features render on the map
+
+function addPMTilesLayer(map, propertyType) {
+    return new Promise((resolve) => {
+        const color = COLORS[propertyType];
         
-        // Get centroid coordinates
-        let lat, lng;
-        if (props.lat && props.lng) {
-            lat = props.lat;
-            lng = props.lng;
-        } else if (geometry.type === 'Point') {
-            lng = geometry.coordinates[0];
-            lat = geometry.coordinates[1];
-        } else if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
-            // Calculate centroid (simple average of coordinates)
-            const coords = geometry.type === 'Polygon' 
-                ? geometry.coordinates[0] 
-                : geometry.coordinates[0][0];
-            lng = coords.reduce((sum, c) => sum + c[0], 0) / coords.length;
-            lat = coords.reduce((sum, c) => sum + c[1], 0) / coords.length;
-        }
-        
-        // Create property object
-        const property = {
-            parcelId: props[FIELD_MAPPING.parcelId] || 'Unknown',
-            address: props[FIELD_MAPPING.address] || 'Unknown',
-            owner: props[FIELD_MAPPING.owner] || 'Unknown',
-            propertyType: normalizePropertyType(props[FIELD_MAPPING.propertyType]),
+        const addLayers = () => {
+            console.log(`Adding layer for ${propertyType}...`);
             
-            // Optional fields
-            neighborhood: props[FIELD_MAPPING.neighborhood],
-            designStyle: props[FIELD_MAPPING.designStyle],
-            acreage: parseFloat(props[FIELD_MAPPING.acreage]) || 0,
-            bedrooms: parseInt(props[FIELD_MAPPING.bedrooms]) || 0,
-            bathrooms: parseFloat(props[FIELD_MAPPING.bathrooms]) || 0,
-            complex: props[FIELD_MAPPING.complex],
-            style: props[FIELD_MAPPING.style],
-            location: props[FIELD_MAPPING.location],
-            zone: props[FIELD_MAPPING.zone],
-            buildingClass: props[FIELD_MAPPING.buildingClass],
-            useCategory: props[FIELD_MAPPING.useCategory],
-            sqft: parseInt(props[FIELD_MAPPING.sqft]) || 0,
-            yearBuilt: parseInt(props[FIELD_MAPPING.yearBuilt]) || 0,
-            
-            // Assessment values
-            assessment2020: parseFloat(props[FIELD_MAPPING.assessment2020]) || 0,
-            assessment2025: parseFloat(props[FIELD_MAPPING.assessment2025]) || 0,
-            
-            // Coordinates
-            lat: lat,
-            lng: lng,
-            
-            // Keep original geometry for polygon display if needed
-            geometry: geometry
+            try {
+                // Check if source already exists
+                if (map.getSource('parcels')) {
+                    console.log(`Source already exists for ${propertyType}, skipping...`);
+                    resolve();
+                    return;
+                }
+                
+                // Add PMTiles source
+                map.addSource('parcels', {
+                    type: 'vector',
+                    url: 'pmtiles://./parcels.pmtiles'
+                });
+
+                // Determine color expression based on assessment value
+                const fillColorExpression = [
+                    'interpolate',
+                    ['linear'],
+                    ['to-number', ['get', 'Assessed Total'], 0],
+                    0, lightenColor(color, 0.7),      // Very light for low values
+                    100000, lightenColor(color, 0.4),  // Medium light
+                    300000, color,                      // Base color
+                    500000, darkenColor(color, 0.3),   // Darker for high values
+                    1000000, darkenColor(color, 0.5)   // Very dark for very high values
+                ];
+
+                // Add fill layer with value-based coloring
+                map.addLayer({
+                    id: 'parcels-fill',
+                    type: 'fill',
+                    source: 'parcels',
+                    'source-layer': 'parcels',
+                    paint: {
+                        'fill-color': fillColorExpression,
+                        'fill-opacity': 0.6
+                    },
+                    filter: createPropertyFilter(propertyType)
+                });
+
+                // Add outline layer
+                map.addLayer({
+                    id: 'parcels-outline',
+                    type: 'line',
+                    source: 'parcels',
+                    'source-layer': 'parcels',
+                    paint: {
+                        'line-color': '#ffffff',
+                        'line-width': 0.5
+                    },
+                    filter: createPropertyFilter(propertyType)
+                });
+
+                // Collect data when features are rendered
+                map.on('data', (e) => {
+                    if (e.sourceId === 'parcels' && e.isSourceLoaded) {
+                        collectParcelData(map, propertyType);
+                    }
+                });
+                
+                // Also try collecting after a delay (backup)
+                setTimeout(() => {
+                    if (!dataCollected[propertyType]) {
+                        console.log(`Retry collecting data for ${propertyType}...`);
+                        collectParcelData(map, propertyType);
+                    }
+                }, 2000);
+
+                // Add click handler
+                map.on('click', 'parcels-fill', (e) => {
+                    if (e.features && e.features.length > 0) {
+                        const props = e.features[0].properties;
+                        showPopup(map, e.lngLat, props, color, propertyType);
+                    }
+                });
+
+                // Change cursor on hover
+                map.on('mouseenter', 'parcels-fill', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+
+                map.on('mouseleave', 'parcels-fill', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+                
+                console.log(`✓ ${propertyType} layer added`);
+                resolve();
+                
+            } catch (err) {
+                console.error(`Error adding ${propertyType} layer:`, err);
+                resolve();
+            }
         };
         
-        allProperties.push(property);
-        
-        // Categorize by type
-        const type = property.propertyType.toLowerCase();
-        if (propertiesByType[type]) {
-            propertiesByType[type].push(property);
+        // Check if map is already loaded
+        if (map.loaded()) {
+            console.log(`Map already loaded for ${propertyType}, adding layers immediately`);
+            addLayers();
+        } else {
+            console.log(`Waiting for ${propertyType} map to load...`);
+            map.once('load', addLayers);
         }
-    });
-    
-    console.log('Properties by type:', {
-        residential: propertiesByType.residential.length,
-        condo: propertiesByType.condo.length,
-        commercial: propertiesByType.commercial.length,
-        vacant: propertiesByType.vacant.length
     });
 }
 
-// Normalize property type names
+function createPropertyFilter(propertyType) {
+    // Match based on property type field variations
+    const typeMap = {
+        residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
+        condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
+        commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL'],
+        vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
+    };
+    
+    const matches = typeMap[propertyType] || [];
+    
+    return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
+}
+
+function collectParcelData(map, propertyType) {
+    // Only collect once per property type
+    if (dataCollected[propertyType]) return;
+    
+    const features = map.querySourceFeatures('parcels', {
+        sourceLayer: 'parcels'
+    });
+    
+    if (features.length === 0) {
+        console.log(`No features loaded yet for ${propertyType}, waiting...`);
+        return;
+    }
+    
+    console.log(`Collecting data for ${propertyType}: ${features.length} features found`);
+    
+    let total2020 = 0;
+    let total2025 = 0;
+    let count = 0;
+    const parcels = [];
+    
+    features.forEach(feature => {
+        const props = feature.properties;
+        
+        // Check if this parcel matches our property type
+        const propType = normalizePropertyType(props['Property Type']);
+        if (propType !== propertyType) return;
+        
+        const val2020 = parseFloat(props['Pre Year Assessed Total']) || 0;
+        const val2025 = parseFloat(props['Assessed Total']) || 0;
+        
+        if (val2025 > 0) {
+            total2020 += val2020;
+            total2025 += val2025;
+            count++;
+            
+            parcels.push({
+                address: props['Property Address'],
+                parcelId: props['Parcel ID'],
+                assessed2020: val2020,
+                assessed2025: val2025,
+                acreage: parseFloat(props['Acreage']) || 0,
+                style: props['Style'] || 'Unknown',
+                location: props['Location'] || 'Unknown',
+                zone: props['Zone'] || 'Unknown'
+            });
+        }
+    });
+    
+    // Only mark as collected if we got a reasonable amount of data
+    if (count > 0) {
+        dataCollected[propertyType] = true;
+        
+        // Store the data
+        parcelData[propertyType] = parcels;
+        statsData[propertyType] = {
+            total2020,
+            total2025,
+            count,
+            avgChange: total2020 > 0 ? ((total2025 - total2020) / total2020 * 100).toFixed(1) : 0
+        };
+        
+        console.log(`✓ ${propertyType} data collected:`, {
+            count,
+            total2020: `$${total2020.toLocaleString()}`,
+            total2025: `$${total2025.toLocaleString()}`
+        });
+        
+        // Update UI
+        updateStatsUI();
+        updateChartsForType(propertyType);
+    }
+}
+
 function normalizePropertyType(type) {
     if (!type) return 'residential';
-    
-    const typeStr = type.toString().toLowerCase();
-    
-    // Residential variations
-    if (typeStr.includes('res') || typeStr.includes('single') || typeStr.includes('family')) {
-        return 'residential';
-    }
-    // Condo variations
-    if (typeStr.includes('condo') || typeStr.includes('town')) {
-        return 'condo';
-    }
-    // Commercial variations
-    if (typeStr.includes('comm') || typeStr.includes('business') || typeStr.includes('industrial')) {
-        return 'commercial';
-    }
-    // Vacant variations
-    if (typeStr.includes('vac') || typeStr.includes('land')) {
-        return 'vacant';
-    }
-    
-    return 'residential'; // default
+    const s = type.toString().toUpperCase();
+    if (s.includes('RES') || s.includes('SINGLE') || s.includes('FAMILY')) return 'residential';
+    if (s.includes('CONDO') || s.includes('TOWN')) return 'condo';
+    if (s.includes('COMM') || s.includes('BUS') || s.includes('IND')) return 'commercial';
+    if (s.includes('VAC') || s.includes('LAND')) return 'vacant';
+    return 'residential';
 }
 
-function initializeApp() {
-    // Calculate statistics
-    calculateStatistics();
-    
-    // Initialize map
-    initializeMap();
-    
-    // Initialize all charts
-    initializeCharts();
-    
-    // Update statistics in UI
-    updateStatisticsUI();
-    
-    console.log('Application initialized successfully');
+// Color helpers
+function lightenColor(hex, percent) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent * 100);
+    const R = (num >> 16) + amt;
+    const G = (num >> 8 & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+        (B < 255 ? B < 1 ? 0 : B : 255))
+        .toString(16).slice(1);
 }
 
-// Calculate statistics from property data
-function calculateStatistics() {
+function darkenColor(hex, percent) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent * 100);
+    const R = (num >> 16) - amt;
+    const G = (num >> 8 & 0x00FF) - amt;
+    const B = (num & 0x0000FF) - amt;
+    return '#' + (0x1000000 + (R > 0 ? R : 0) * 0x10000 +
+        (G > 0 ? G : 0) * 0x100 +
+        (B > 0 ? B : 0))
+        .toString(16).slice(1);
+}
+
+function showPopup(map, lngLat, props, color, propertyType) {
+    const assessment2020 = parseFloat(props['Pre Year Assessed Total']) || 0;
+    const assessment2025 = parseFloat(props['Assessed Total']) || 0;
+    const pct = assessment2020 > 0 
+        ? ((assessment2025 - assessment2020) / assessment2020 * 100).toFixed(1)
+        : '–';
+    const pctColor = parseFloat(pct) > 0 ? '#16a34a' : '#dc2626';
+
+    new maplibregl.Popup()
+        .setLngLat(lngLat)
+        .setHTML(`
+            <div style="min-width:200px;font-size:13px;font-family:sans-serif;">
+                <div style="font-weight:700;margin-bottom:6px;">
+                    ${props['Property Address'] || 'Unknown'}
+                </div>
+                <div style="color:${color};font-weight:600;font-size:11px;
+                     text-transform:uppercase;margin-bottom:8px;">
+                    ${propertyType}
+                </div>
+                <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="color:#666;padding:2px 0;">Parcel</td>
+                        <td style="text-align:right;">${props['Parcel ID'] || 'Unknown'}</td></tr>
+                    <tr><td style="color:#666;padding:2px 0;">2020</td>
+                        <td style="text-align:right;">$${assessment2020.toLocaleString()}</td></tr>
+                    <tr><td style="color:#666;padding:2px 0;">2025</td>
+                        <td style="text-align:right;font-weight:600;">$${assessment2025.toLocaleString()}</td></tr>
+                    <tr><td style="color:#666;padding:2px 0;">Change</td>
+                        <td style="text-align:right;font-weight:700;color:${pctColor};">
+                            ${parseFloat(pct) > 0 ? '+' : ''}${pct}%</td></tr>
+                </table>
+            </div>
+        `)
+        .addTo(map);
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function updateStatsUI() {
+    console.log('Updating stats UI...');
+    
     ['residential', 'condo', 'commercial', 'vacant'].forEach(type => {
-        const properties = propertiesByType[type];
-        statistics[type] = {
-            totalAssessment2020: properties.reduce((sum, p) => sum + p.assessment2020, 0),
-            totalAssessment2025: properties.reduce((sum, p) => sum + p.assessment2025, 0),
-            parcelCount: properties.length
-        };
-    });
-    
-    console.log('Statistics calculated:', statistics);
-}
-
-// Update statistics in the UI
-function updateStatisticsUI() {
-    const formatCurrency = (num) => '$' + num.toLocaleString('en-US');
-    const formatNumber = (num) => num.toLocaleString('en-US');
-    
-    function updateStatCard(tabName, old2020, new2025, count) {
-        const tabContent = document.getElementById(`${tabName}-content`);
-        if (tabContent) {
-            const statCards = tabContent.querySelectorAll('.stat-value');
-            if (statCards.length >= 3) {
-                statCards[0].textContent = formatCurrency(old2020);
-                statCards[1].textContent = formatCurrency(new2025);
-                statCards[2].textContent = formatNumber(count);
-            }
+        const stats = statsData[type];
+        if (!stats || stats.count === 0) return;
+        
+        const tab = document.getElementById(`${type}-content`);
+        if (!tab) return;
+        
+        const cards = tab.querySelectorAll('.stat-value');
+        if (cards.length >= 3) {
+            cards[0].textContent = '$' + Math.round(stats.total2020).toLocaleString();
+            cards[1].textContent = '$' + Math.round(stats.total2025).toLocaleString();
+            cards[2].textContent = stats.count.toLocaleString();
         }
-    }
-    
-    updateStatCard('residential', statistics.residential.totalAssessment2020, 
-                   statistics.residential.totalAssessment2025, 
-                   statistics.residential.parcelCount);
-    
-    updateStatCard('condo', statistics.condo.totalAssessment2020, 
-                   statistics.condo.totalAssessment2025, 
-                   statistics.condo.parcelCount);
-    
-    updateStatCard('commercial', statistics.commercial.totalAssessment2020, 
-                   statistics.commercial.totalAssessment2025, 
-                   statistics.commercial.parcelCount);
-    
-    updateStatCard('vacant', statistics.vacant.totalAssessment2020, 
-                   statistics.vacant.totalAssessment2025, 
-                   statistics.vacant.parcelCount);
-}
-
-// Initialize Leaflet Map with all properties
-function initializeMap() {
-    try {
-        // Initialize maps for each tab
-        residentialMap = L.map('residentialMap').setView([41.698, -72.731], 13);
-        condoMap = L.map('condoMap').setView([41.698, -72.731], 13);
-        commercialMap = L.map('commercialMap').setView([41.698, -72.731], 13);
-        vacantMap = L.map('vacantMap').setView([41.698, -72.731], 13);
-
-        // Create separate tile layer for each map (can't share!)
-        const tileLayerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        const tileLayerOptions = {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
-        };
-
-        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(residentialMap);
-        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(condoMap);
-        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(commercialMap);
-        L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(vacantMap);
-
-        const colors = {
-            residential: '#e55d75',
-            condo: '#f59e0b',
-            commercial: '#6b8cae',
-            vacant: '#10b981'
-        };
-
-        // Add markers to each map individually
-        propertiesByType.residential.forEach(prop => addMarker(prop, residentialMap, colors.residential));
-        propertiesByType.condo.forEach(prop => addMarker(prop, condoMap, colors.condo));
-        propertiesByType.commercial.forEach(prop => addMarker(prop, commercialMap, colors.commercial));
-        propertiesByType.vacant.forEach(prop => addMarker(prop, vacantMap, colors.vacant));
-
-        console.log('All maps initialized successfully');
-    } catch (error) {
-        console.error('Error initializing maps:', error);
-    }
-}
-
-// Helper function to add markers
-function addMarker(prop, map, color) {
-    if (!prop.lat || !prop.lng) return;
-
-    const change = prop.assessment2020 > 0
-        ? ((prop.assessment2025 - prop.assessment2020) / prop.assessment2020 * 100).toFixed(1)
-        : 0;
-
-    const popupContent = `
-        <div style="min-width: 220px;">
-            <strong>${prop.address}</strong><br>
-            <span style="color: ${color}; font-weight: bold;">${prop.propertyType.toUpperCase()}</span><br>
-            <strong>Parcel:</strong> ${prop.parcelId}<br>
-            ${prop.designStyle ? `<strong>Style:</strong> ${prop.designStyle}<br>` : ''}
-            ${prop.sqft > 0 ? `<strong>Sq Ft:</strong> ${prop.sqft.toLocaleString()}<br>` : ''}
-            <strong>2020:</strong> $${prop.assessment2020.toLocaleString()}<br>
-            <strong>2025:</strong> $${prop.assessment2025.toLocaleString()}<br>
-            <strong>Change:</strong> <span style="color: ${change > 0 ? 'green' : 'red'}">${change > 0 ? '+' : ''}${change}%</span>
-        </div>
-    `;
-
-    L.circleMarker([prop.lat, prop.lng], {
-        radius: 6,
-        fillColor: color,
-        color: '#ffffff',
-        weight: 1,
-        opacity: 1,
-        fillOpacity: 0.7
-    }).bindPopup(popupContent).addTo(map);
-}
-
-
-// Aggregate properties by field
-function aggregateByField(properties, field, valueField = 'assessment2025') {
-    const aggregated = {};
-    properties.forEach(prop => {
-        const key = prop[field] || 'Unknown';
-        if (!aggregated[key]) {
-            aggregated[key] = { sum: 0, count: 0 };
-        }
-        aggregated[key].sum += prop[valueField];
-        aggregated[key].count += 1;
     });
-    
-    return Object.entries(aggregated).map(([key, value]) => ({
-        label: key,
-        value: value.sum / value.count,
-        count: value.count
-    })).sort((a, b) => b.value - a.value);
 }
 
-// Initialize all charts (same as before but using propertiesByType)
+// ─── Charts ───────────────────────────────────────────────────────────────────
+let charts = {};
+
 function initializeCharts() {
-    // Residential Scatter
-    new Chart(document.getElementById('residentialScatter'), {
-        type: 'scatter',
-        data: {
-            datasets: [{
-                label: 'Properties',
-                data: propertiesByType.residential.map(p => ({ x: p.acreage, y: p.assessment2025 })),
-                backgroundColor: 'rgba(229, 93, 117, 0.5)',
-                borderColor: 'rgba(229, 93, 117, 1)',
-                pointRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { title: { display: true, text: 'Acreage' } },
-                y: { 
-                    title: { display: true, text: 'Assessed Value ($)' },
-                    ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
-                }
-            }
-        }
-    });
-    
-    // Residential Design Chart
-    const designData = aggregateByField(propertiesByType.residential.filter(p => p.designStyle), 'designStyle');
-    new Chart(document.getElementById('residentialDesignChart'), {
-        type: 'bar',
-        data: {
-            labels: designData.map(d => d.label),
-            datasets: [{
-                data: designData.map(d => d.value),
-                backgroundColor: 'rgba(229, 93, 117, 0.8)'
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' } } }
-        }
-    });
-    
-    // Condo Scatter
-    new Chart(document.getElementById('condoScatter'), {
-        type: 'scatter',
-        data: {
-            datasets: [{
-                data: propertiesByType.condo.map(p => ({ x: p.sqft, y: p.assessment2025 })),
-                backgroundColor: 'rgba(245, 158, 11, 0.5)',
-                pointRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { title: { display: true, text: 'Finished Area (sq ft)' } },
-                y: { 
-                    title: { display: true, text: 'Value ($)' },
-                    ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
-                }
-            }
-        }
-    });
-    
-    // Condo Style
-    const styleData = aggregateByField(propertiesByType.condo.filter(p => p.style), 'style');
-    new Chart(document.getElementById('condoStyleChart'), {
-        type: 'doughnut',
-        data: {
-            labels: styleData.map(d => d.label),
-            datasets: [{
-                data: styleData.map(d => d.count),
-                backgroundColor: ['#f59e0b', '#ea580c', '#c2410c', '#92400e', '#78350f']
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } }
-        }
-    });
-    
-    // Condo Location
-    const locationData = aggregateByField(propertiesByType.condo.filter(p => p.location), 'location');
-    new Chart(document.getElementById('condoLocationChart'), {
-        type: 'bar',
-        data: {
-            labels: locationData.map(d => d.label),
-            datasets: [{ data: locationData.map(d => d.value), backgroundColor: 'rgba(245, 158, 11, 0.8)' }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' } } }
-        }
-    });
-    
-    // Commercial Scatter
-    new Chart(document.getElementById('commercialScatter'), {
-        type: 'scatter',
-        data: {
-            datasets: [{
-                data: propertiesByType.commercial.map(p => ({ x: p.sqft, y: p.assessment2025 })),
-                backgroundColor: 'rgba(107, 140, 174, 0.5)',
-                pointRadius: 5
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { title: { display: true, text: 'Sq Ft' } },
-                y: { 
-                    title: { display: true, text: 'Value ($)' },
-                    ticks: { callback: value => '$' + (value/1000000).toFixed(1) + 'M' }
-                }
-            }
-        }
-    });
-    
-    // Commercial Class
-    const classData = aggregateByField(propertiesByType.commercial.filter(p => p.buildingClass), 'buildingClass');
-    new Chart(document.getElementById('commercialClassChart'), {
-        type: 'doughnut',
-        data: {
-            labels: classData.map(d => d.label),
-            datasets: [{
-                data: classData.map(d => d.count),
-                backgroundColor: ['#6b8cae', '#4a6b8a', '#3a5a7a', '#2a4a6a', '#1a3a5a']
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'right' } }
-        }
-    });
-    
-    // Commercial Use
-    const useData = aggregateByField(propertiesByType.commercial.filter(p => p.useCategory), 'useCategory');
-    new Chart(document.getElementById('commercialUseChart'), {
-        type: 'bar',
-        data: {
-            labels: useData.map(d => d.label),
-            datasets: [{ data: useData.map(d => d.value), backgroundColor: 'rgba(107, 140, 174, 0.8)' }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { callback: value => '$' + (value/1000000).toFixed(1) + 'M' } } }
-        }
-    });
-    
-    // Vacant Scatter
-    new Chart(document.getElementById('vacantScatter'), {
-        type: 'scatter',
-        data: {
-            datasets: [{
-                data: propertiesByType.vacant.map(p => ({ x: p.acreage, y: p.assessment2025 })),
-                backgroundColor: 'rgba(16, 185, 129, 0.5)',
-                pointRadius: 5
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { title: { display: true, text: 'Acres' } },
-                y: { 
-                    title: { display: true, text: 'Value ($)' },
-                    ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' }
-                }
-            }
-        }
-    });
-    
-    // Vacant Primary Use
-    const primaryUseData = {};
-    propertiesByType.vacant.forEach(prop => {
-        const use = prop.useCategory || prop.zone || 'Unknown';
-        primaryUseData[use] = (primaryUseData[use] || 0) + prop.assessment2025;
-    });
-    
-    const sortedUseData = Object.entries(primaryUseData).sort((a, b) => b[1] - a[1]);
-    
-    new Chart(document.getElementById('vacantUseChart'), {
-        type: 'bar',
-        data: {
-            labels: sortedUseData.map(d => d[0]),
-            datasets: [{ data: sortedUseData.map(d => d[1]), backgroundColor: 'rgba(16, 185, 129, 0.8)' }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { callback: value => '$' + (value/1000).toFixed(0) + 'K' } } }
-        }
-    });
-    
-    console.log('All charts initialized from GeoJSON data');
+    console.log('Initializing charts...');
+    // Charts will be created when we have data
 }
 
-function switchTab(tabName) {
-    // Update active tab button
-    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-    event.target.classList.add('active');
-
-    // Show only the selected tab content
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    const targetContent = document.getElementById(`${tabName}-content`);
-    if (targetContent) {
-        targetContent.classList.add('active');
+function updateChartsForType(propertyType) {
+    console.log(`Updating charts for ${propertyType}...`);
+    
+    const parcels = parcelData[propertyType];
+    if (!parcels || parcels.length === 0) return;
+    
+    if (propertyType === 'residential') {
+        updateResidentialCharts(parcels);
+    } else if (propertyType === 'condo') {
+        updateCondoCharts(parcels);
+    } else if (propertyType === 'commercial') {
+        updateCommercialCharts(parcels);
+    } else if (propertyType === 'vacant') {
+        updateVacantCharts(parcels);
     }
+}
 
-    // Fix map display after tab switch
-    setTimeout(() => {
-        if (tabName === 'residential' && residentialMap) {
-            residentialMap.invalidateSize();
-        } else if (tabName === 'condo' && condoMap) {
-            condoMap.invalidateSize();
-        } else if (tabName === 'commercial' && commercialMap) {
-            commercialMap.invalidateSize();
-        } else if (tabName === 'vacant' && vacantMap) {
-            vacantMap.invalidateSize();
+function updateResidentialCharts(parcels) {
+    // Value Distribution Chart
+    const valueRanges = {
+        '<$200K': 0, '$200-300K': 0, '$300-400K': 0, 
+        '$400-500K': 0, '>$500K': 0
+    };
+    
+    parcels.forEach(p => {
+        if (p.assessed2025 < 200000) valueRanges['<$200K']++;
+        else if (p.assessed2025 < 300000) valueRanges['$200-300K']++;
+        else if (p.assessed2025 < 400000) valueRanges['$300-400K']++;
+        else if (p.assessed2025 < 500000) valueRanges['$400-500K']++;
+        else valueRanges['>$500K']++;
+    });
+    
+    createOrUpdateChart('residentialValueChart', {
+        type: 'bar',
+        data: {
+            labels: Object.keys(valueRanges),
+            datasets: [{
+                label: 'Number of Properties',
+                data: Object.values(valueRanges),
+                backgroundColor: COLORS.residential
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
         }
-    }, 100);
+    });
+    
+    // Style Distribution
+    const styleCount = {};
+    parcels.forEach(p => {
+        styleCount[p.style] = (styleCount[p.style] || 0) + 1;
+    });
+    
+    const topStyles = Object.entries(styleCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    
+    createOrUpdateChart('residentialStyleChart', {
+        type: 'bar',
+        data: {
+            labels: topStyles.map(s => s[0]),
+            datasets: [{
+                label: 'Count',
+                data: topStyles.map(s => s[1]),
+                backgroundColor: COLORS.residential
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } }
+        }
+    });
+    
+    // Scatter plot
+    createScatterPlot('residentialScatter', parcels, 'acreage', 'assessed2025', 
+        'Acreage', 'Assessment Value', COLORS.residential);
+}
+
+function updateCondoCharts(parcels) {
+    // Similar to residential
+    const avgByStyle = {};
+    const countByStyle = {};
+    
+    parcels.forEach(p => {
+        if (!avgByStyle[p.style]) {
+            avgByStyle[p.style] = 0;
+            countByStyle[p.style] = 0;
+        }
+        avgByStyle[p.style] += p.assessed2025;
+        countByStyle[p.style]++;
+    });
+    
+    Object.keys(avgByStyle).forEach(style => {
+        avgByStyle[style] = avgByStyle[style] / countByStyle[style];
+    });
+    
+    const topStyles = Object.entries(avgByStyle)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+    
+    createOrUpdateChart('condoStyleChart', {
+        type: 'bar',
+        data: {
+            labels: topStyles.map(s => s[0]),
+            datasets: [{
+                label: 'Average Value',
+                data: topStyles.map(s => s[1]),
+                backgroundColor: COLORS.condo
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+    
+    // Location distribution
+    const locationCount = {};
+    parcels.forEach(p => {
+        locationCount[p.location] = (locationCount[p.location] || 0) + 1;
+    });
+    
+    createOrUpdateChart('condoLocationChart', {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(locationCount),
+            datasets: [{
+                data: Object.values(locationCount),
+                backgroundColor: ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+function updateCommercialCharts(parcels) {
+    // Zone distribution
+    const zoneCount = {};
+    parcels.forEach(p => {
+        zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
+    });
+    
+    createOrUpdateChart('commercialClassChart', {
+        type: 'bar',
+        data: {
+            labels: Object.keys(zoneCount),
+            datasets: [{
+                label: 'Count',
+                data: Object.values(zoneCount),
+                backgroundColor: COLORS.commercial
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+    
+    // Scatter
+    createScatterPlot('commercialScatter', parcels, 'acreage', 'assessed2025',
+        'Area', 'Assessment', COLORS.commercial);
+}
+
+function updateVacantCharts(parcels) {
+    const zoneCount = {};
+    parcels.forEach(p => {
+        zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
+    });
+    
+    createOrUpdateChart('vacantUseChart', {
+        type: 'bar',
+        data: {
+            labels: Object.keys(zoneCount),
+            datasets: [{
+                label: 'Count',
+                data: Object.values(zoneCount),
+                backgroundColor: COLORS.vacant
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+    
+    createScatterPlot('vacantScatter', parcels, 'acreage', 'assessed2025',
+        'Acreage', 'Value', COLORS.vacant);
+}
+
+function createOrUpdateChart(canvasId, config) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(canvas, config);
+}
+
+function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    const data = parcels.map(p => ({ x: p[xField], y: p[yField] }));
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(canvas, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                data: data,
+                backgroundColor: color + '80'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { title: { display: true, text: xLabel } },
+                y: { title: { display: true, text: yLabel } }
+            }
+        }
+    });
+}
+
+// ─── Tab Switching ────────────────────────────────────────────────────────────
+window.switchTab = function(event, tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const target = document.getElementById(`${tabName}-content`);
+    if (target) target.classList.add('active');
+    const maps = { 
+        residential: residentialMap, 
+        condo: condoMap,
+        commercial: commercialMap, 
+        vacant: vacantMap 
+    };
+    setTimeout(() => { 
+        if (maps[tabName]) maps[tabName].resize(); 
+    }, 50);
+};
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+function showLoading(msg) {
+    const el = document.getElementById('loading-overlay');
+    if (!el) return;
+    el.style.display = 'flex';
+    const m = document.getElementById('loading-message');
+    if (m) m.textContent = msg;
+}
+
+function hideLoading() {
+    const el = document.getElementById('loading-overlay');
+    if (el) el.style.display = 'none';
+}
+
+function showWarning(msg) {
+    const el = document.getElementById('loading-overlay');
+    if (!el) return;
+    el.style.display = 'flex';
+    el.innerHTML = `
+        <div style="background:white;padding:2rem;border-radius:8px;max-width:500px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:1rem;">⚠️</div>
+            <p style="color:#f59e0b;font-weight:600;margin-bottom:.5rem;">Notice</p>
+            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">${msg}</p>
+            <button onclick="hideLoading()"
+                style="padding:.5rem 1.5rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500;">
+                Continue Anyway
+            </button>
+        </div>`;
+}
+
+function showError(msg) {
+    hideLoading();
+    const el = document.getElementById('loading-overlay');
+    if (!el) return;
+    el.style.display = 'flex';
+    el.innerHTML = `
+        <div style="background:white;padding:2rem;border-radius:8px;max-width:400px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:1rem;">❌</div>
+            <p style="color:#dc2626;font-weight:600;margin-bottom:.5rem;">Error</p>
+            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">${msg}</p>
+            <button onclick="location.reload()"
+                style="padding:.5rem 1rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;">
+                Try Again
+            </button>
+        </div>`;
+}
+
+function showPMTilesError(errorMsg) {
+    hideLoading();
+    const el = document.getElementById('loading-overlay');
+    if (!el) return;
+    el.style.display = 'flex';
+    el.innerHTML = `
+        <div style="background:white;padding:2rem;border-radius:8px;max-width:550px;text-align:left;">
+            <div style="text-align:center;font-size:2rem;margin-bottom:1rem;">📦</div>
+            <h3 style="color:#dc2626;font-weight:600;margin-bottom:.5rem;text-align:center;">PMTiles File Not Found</h3>
+            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">
+                The app cannot find <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;">parcels.pmtiles</code> file.
+            </p>
+            <div style="background:#f9fafb;border-left:3px solid #6b8cae;padding:1rem;margin-bottom:1rem;">
+                <p style="font-size:.875rem;margin-bottom:.75rem;"><strong>Troubleshooting:</strong></p>
+                <ol style="font-size:.875rem;line-height:1.6;color:#666;padding-left:1.25rem;">
+                    <li>Make sure <code>parcels.pmtiles</code> is in the same folder as <code>index.html</code></li>
+                    <li>Check the filename is exactly: <code>parcels.pmtiles</code> (lowercase)</li>
+                    <li>If using Python server, make sure it's running in the correct directory</li>
+                    <li>Try a different server like <code>npx http-server -p 8000</code></li>
+                </ol>
+            </div>
+            <details style="margin-bottom:1rem;">
+                <summary style="cursor:pointer;color:#6b8cae;font-size:.875rem;">Error Details</summary>
+                <pre style="background:#f3f4f6;padding:.75rem;border-radius:4px;font-size:.75rem;overflow-x:auto;margin-top:.5rem;">${errorMsg}</pre>
+            </details>
+            <div style="display:flex;gap:.5rem;justify-content:center;">
+                <button onclick="hideLoading()"
+                    style="padding:.5rem 1rem;background:#e5e7eb;color:#374151;border:none;border-radius:4px;cursor:pointer;font-size:.875rem;">
+                    View Maps Only
+                </button>
+                <button onclick="location.reload()"
+                    style="padding:.5rem 1rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;font-size:.875rem;">
+                    Try Again
+                </button>
+            </div>
+        </div>`;
 }
