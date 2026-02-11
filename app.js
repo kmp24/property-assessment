@@ -15,18 +15,18 @@ const COLORS = {
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log('Starting app...');
+    console.log('DOM loaded, waiting for libraries...');
+    showLoading('Loading map libraries...');
     
     try {
-        showLoading('Checking libraries...');
+        // Wait for libraries with longer timeout for slow connections
+        const librariesLoaded = await waitForLibraries(30000); // 30 second timeout
         
-        if (typeof maplibregl === 'undefined') {
-            throw new Error('MapLibre GL JS not loaded');
-        }
-        if (typeof pmtiles === 'undefined') {
-            throw new Error('PMTiles library not loaded');
+        if (!librariesLoaded) {
+            throw new Error('Libraries took too long to load. This might be due to a slow internet connection or CDN issues. Please try:\n1. Refreshing the page\n2. Checking your internet connection\n3. Trying again in a few minutes');
         }
         
+        console.log('✓ Libraries loaded');
         showLoading('Initializing maps...');
         await initializeMaps();
         
@@ -35,6 +35,53 @@ window.addEventListener('DOMContentLoaded', async () => {
         showError(`Startup failed: ${err.message}`);
     }
 });
+
+function waitForLibraries(timeout = 10000) {
+    return new Promise((resolve) => {
+        const startTime = Date.now();
+        const loadingMsg = document.getElementById('loading-message');
+        
+        const checkLibraries = () => {
+            const elapsed = Date.now() - startTime;
+            
+            // Check if libraries are loaded
+            if (typeof maplibregl !== 'undefined' && typeof pmtiles !== 'undefined') {
+                console.log('✓ MapLibre and PMTiles loaded');
+                if (loadingMsg) loadingMsg.textContent = 'Libraries loaded!';
+                resolve(true);
+                return;
+            }
+            
+            // Check for timeout
+            if (elapsed > timeout) {
+                console.error('Timeout waiting for libraries');
+                if (loadingMsg) loadingMsg.textContent = 'Loading timed out. Please refresh.';
+                resolve(false);
+                return;
+            }
+            
+            // Update progress message
+            const missing = [];
+            if (typeof maplibregl === 'undefined') missing.push('MapLibre GL JS');
+            if (typeof pmtiles === 'undefined') missing.push('PMTiles');
+            
+            if (loadingMsg && missing.length > 0) {
+                const seconds = Math.round(elapsed / 1000);
+                loadingMsg.textContent = `Loading ${missing.join(' & ')}... (${seconds}s)`;
+            }
+            
+            // Log every 2 seconds
+            if (missing.length > 0 && elapsed % 2000 < 100) {
+                console.log(`Still waiting for: ${missing.join(', ')}...`);
+            }
+            
+            // Check again
+            setTimeout(checkLibraries, 100);
+        };
+        
+        checkLibraries();
+    });
+}
 
 // ─── Maps ─────────────────────────────────────────────────────────────────────
 async function initializeMaps() {
