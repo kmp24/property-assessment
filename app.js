@@ -327,20 +327,21 @@ function addPMTilesLayer(map, propertyType) {
 }
 
 function createPropertyFilter(propertyType) {
+    return ['all'];
     // Filter by Property Type field to show only relevant parcels on each tab
-    const typeMap = {
-        residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
-        condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
-        commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL', 'Comm', 'COMM'],
-        vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
-    };
+    //const typeMap = {
+    //    residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
+    //    condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
+    //    commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL', 'Comm', 'COMM'],
+    //    vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
+    //};
     
-    const matches = typeMap[propertyType] || [];
+    //const matches = typeMap[propertyType] || [];
     
     // Create filter that matches any of the property type variations
-    if (matches.length === 0) return ['all'];
+    //if (matches.length === 0) return ['all'];
     
-    return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
+    //return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
 }
 
 // Get unique zones from data for color mapping
