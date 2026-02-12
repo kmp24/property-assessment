@@ -221,19 +221,10 @@ function addPMTilesLayer(map, propertyType) {
                     url: 'pmtiles://./parcels.pmtiles'
                 });
 
-                // Determine color expression based on assessment value
-                const fillColorExpression = [
-                    'interpolate',
-                    ['linear'],
-                    ['to-number', ['get', 'Assessed Total'], 0],
-                    0, lightenColor(color, 0.7),      // Very light for low values
-                    100000, lightenColor(color, 0.4),  // Medium light
-                    300000, color,                      // Base color
-                    500000, darkenColor(color, 0.3),   // Darker for high values
-                    1000000, darkenColor(color, 0.5)   // Very dark for very high values
-                ];
+                // Color parcels by Zone instead of assessment value
+                const fillColorExpression = createZoneColorExpression();
 
-                // Add fill layer with value-based coloring
+                // Add fill layer with zone-based coloring
                 map.addLayer({
                     id: 'parcels-fill',
                     type: 'fill',
@@ -336,21 +327,49 @@ function addPMTilesLayer(map, propertyType) {
 }
 
 function createPropertyFilter(propertyType) {
-    // For now, show ALL parcels on each map
-    // The data collection will still categorize them correctly
-    // This ensures parcels are visible even if Property Type field has unexpected values
-    return ['all'];
-    
-    /* Original strict filter - disabled for now
+    // Filter by Property Type field to show only relevant parcels on each tab
     const typeMap = {
         residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
         condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
-        commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL'],
+        commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL', 'Comm', 'COMM'],
         vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
     };
+    
     const matches = typeMap[propertyType] || [];
+    
+    // Create filter that matches any of the property type variations
+    if (matches.length === 0) return ['all'];
+    
     return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
-    */
+}
+
+// Get unique zones from data for color mapping
+const ZONE_COLORS = {
+    'R-13': '#3b82f6',   // Blue
+    'R-20': '#10b981',   // Green  
+    'R-40': '#f59e0b',   // Orange
+    'R-80': '#ef4444',   // Red
+    'B': '#8b5cf6',      // Purple - Business
+    'I': '#64748b',      // Gray - Industrial
+    'default': '#94a3b8' // Light gray - Unknown
+};
+
+function getZoneColor(zone) {
+    return ZONE_COLORS[zone] || ZONE_COLORS['default'];
+}
+
+// Create zone-based color expression for map
+function createZoneColorExpression() {
+    const zoneKeys = Object.keys(ZONE_COLORS).filter(k => k !== 'default');
+    const expression = ['match', ['get', 'Zone']];
+    
+    zoneKeys.forEach(zone => {
+        expression.push(zone, ZONE_COLORS[zone]);
+    });
+    
+    expression.push(ZONE_COLORS['default']); // default color
+    
+    return expression;
 }
 
 function collectParcelData(map, propertyType) {
@@ -404,14 +423,16 @@ function collectParcelData(map, propertyType) {
                 parcelId: props['Parcel ID'],
                 assessed2020: val2020,
                 assessed2025: val2025,
-                acreage: parseFloat(props['Land Acres']) || 0,  // Changed from 'Acreage'
-                style: props['Style Description'] || 'Unknown',  // Changed from 'Style'
-                location: props['Neighborhood'] || 'Unknown',    // Changed from 'Location'
+                acreage: parseFloat(props['Land Acres']) || 0,
+                style: props['Style Description'] || 'Unknown',
+                neighborhood: props['Neighborhood'] || 'Unknown',
                 zone: props['Zone'] || 'Unknown',
                 bedrooms: parseInt(props['Number of Bedroom']) || 0,
                 bathrooms: parseFloat(props['Number of Bathrooms']) || 0,
                 sqft: parseFloat(props['Gross Area of Primary Building']) || 0,
-                yearBuilt: parseInt(props['Effective Year Built']) || 0
+                yearBuilt: parseInt(props['Effective Year Built']) || 0,
+                stateUse: props['State Use Description'] || 'Unknown',
+                frameType: props['Frame Type'] || 'Unknown'
             });
         }
     });
@@ -636,23 +657,81 @@ function updateResidentialCharts(parcels) {
         }
     });
     
+    // Average Building Assessment by Design
+    const avgByStyle = {};
+    const countByStyle = {};
+    
+    parcels.forEach(p => {
+        if (p.style && p.style !== 'Unknown' && p.assessed2025 > 0) {
+            if (!avgByStyle[p.style]) {
+                avgByStyle[p.style] = 0;
+                countByStyle[p.style] = 0;
+            }
+            avgByStyle[p.style] += p.assessed2025;
+            countByStyle[p.style]++;
+        }
+    });
+    
+    Object.keys(avgByStyle).forEach(style => {
+        avgByStyle[style] = avgByStyle[style] / countByStyle[style];
+    });
+    
+    const topAvgStyles = Object.entries(avgByStyle)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    
+    createOrUpdateChart('residentialDesignChart', {
+        type: 'bar',
+        data: {
+            labels: topAvgStyles.map(s => s[0]),
+            datasets: [{
+                label: 'Average Assessment',
+                data: topAvgStyles.map(s => Math.round(s[1])),
+                backgroundColor: COLORS.residential
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `$${context.parsed.x.toLocaleString()}`
+                    }
+                }
+            },
+            scales: {
+                x: { 
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => '$' + (value / 1000).toFixed(0) + 'K'
+                    }
+                }
+            }
+        }
+    });
+    
     // Scatter plot
     createScatterPlot('residentialScatter', parcels, 'acreage', 'assessed2025', 
         'Acreage', 'Assessment Value', COLORS.residential);
 }
 
 function updateCondoCharts(parcels) {
-    // Similar to residential
+    // Average by Style
     const avgByStyle = {};
     const countByStyle = {};
     
     parcels.forEach(p => {
-        if (!avgByStyle[p.style]) {
-            avgByStyle[p.style] = 0;
-            countByStyle[p.style] = 0;
+        if (p.style && p.style !== 'Unknown') {
+            if (!avgByStyle[p.style]) {
+                avgByStyle[p.style] = 0;
+                countByStyle[p.style] = 0;
+            }
+            avgByStyle[p.style] += p.assessed2025;
+            countByStyle[p.style]++;
         }
-        avgByStyle[p.style] += p.assessed2025;
-        countByStyle[p.style]++;
     });
     
     Object.keys(avgByStyle).forEach(style => {
@@ -669,30 +748,51 @@ function updateCondoCharts(parcels) {
             labels: topStyles.map(s => s[0]),
             datasets: [{
                 label: 'Average Value',
-                data: topStyles.map(s => s[1]),
+                data: topStyles.map(s => Math.round(s[1])),
                 backgroundColor: COLORS.condo
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `$${context.parsed.y.toLocaleString()}`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => '$' + (value / 1000).toFixed(0) + 'K'
+                    }
+                }
+            }
         }
     });
     
-    // Location distribution
+    // Unit Location Distribution (using Neighborhood field)
     const locationCount = {};
     parcels.forEach(p => {
-        locationCount[p.location] = (locationCount[p.location] || 0) + 1;
+        if (p.neighborhood && p.neighborhood !== 'Unknown') {
+            locationCount[p.neighborhood] = (locationCount[p.neighborhood] || 0) + 1;
+        }
     });
+    
+    const topLocations = Object.entries(locationCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
     
     createOrUpdateChart('condoLocationChart', {
         type: 'doughnut',
         data: {
-            labels: Object.keys(locationCount),
+            labels: topLocations.map(l => l[0]),
             datasets: [{
-                data: Object.values(locationCount),
-                backgroundColor: ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a']
+                data: topLocations.map(l => l[1]),
+                backgroundColor: ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#fed7aa', '#ffedd5', '#fb923c', '#fdba74']
             }]
         },
         options: {
@@ -700,62 +800,82 @@ function updateCondoCharts(parcels) {
             maintainAspectRatio: false
         }
     });
+    
+    // 2025 Assessed Value vs. Finished Area (Sq Ft)
+    createScatterPlot('condoScatter', parcels, 'sqft', 'assessed2025',
+        'Finished Area (Sq Ft)', 'Assessment Value', COLORS.condo);
 }
 
 function updateCommercialCharts(parcels) {
-    // Zone distribution
-    const zoneCount = {};
+    // Use Category Distribution (using State Use Description field)
+    const useCount = {};
     parcels.forEach(p => {
-        zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
+        if (p.stateUse && p.stateUse !== 'Unknown') {
+            useCount[p.stateUse] = (useCount[p.stateUse] || 0) + 1;
+        }
     });
+    
+    const topUses = Object.entries(useCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
     
     createOrUpdateChart('commercialClassChart', {
         type: 'bar',
         data: {
-            labels: Object.keys(zoneCount),
+            labels: topUses.map(u => u[0]),
             datasets: [{
                 label: 'Count',
-                data: Object.values(zoneCount),
+                data: topUses.map(u => u[1]),
                 backgroundColor: COLORS.commercial
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            indexAxis: 'y',
             plugins: { legend: { display: false } }
         }
     });
     
-    // Scatter
-    createScatterPlot('commercialScatter', parcels, 'acreage', 'assessed2025',
-        'Area', 'Assessment', COLORS.commercial);
+    // Scatter - Area vs Assessment
+    createScatterPlot('commercialScatter', parcels, 'sqft', 'assessed2025',
+        'Building Area (Sq Ft)', 'Assessment', COLORS.commercial);
 }
 
 function updateVacantCharts(parcels) {
-    const zoneCount = {};
+    // Primary Use Distribution (using State Use Description field)
+    const useCount = {};
     parcels.forEach(p => {
-        zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
+        if (p.stateUse && p.stateUse !== 'Unknown') {
+            useCount[p.stateUse] = (useCount[p.stateUse] || 0) + 1;
+        }
     });
+    
+    const topUses = Object.entries(useCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
     
     createOrUpdateChart('vacantUseChart', {
         type: 'bar',
         data: {
-            labels: Object.keys(zoneCount),
+            labels: topUses.map(u => u[0]),
             datasets: [{
                 label: 'Count',
-                data: Object.values(zoneCount),
+                data: topUses.map(u => u[1]),
                 backgroundColor: COLORS.vacant
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            indexAxis: 'y',
             plugins: { legend: { display: false } }
         }
     });
     
+    // Assessment Value vs Acreage
     createScatterPlot('vacantScatter', parcels, 'acreage', 'assessed2025',
-        'Acreage', 'Value', COLORS.vacant);
+        'Acreage', 'Assessment Value', COLORS.vacant);
 }
 
 function createOrUpdateChart(canvasId, config) {
@@ -773,7 +893,15 @@ function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, co
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     
-    const data = parcels.map(p => ({ x: p[xField], y: p[yField] }));
+    // Filter out parcels with invalid/zero values
+    const data = parcels
+        .filter(p => p[xField] > 0 && p[yField] > 0)
+        .map(p => ({ x: p[xField], y: p[yField] }));
+    
+    if (data.length === 0) {
+        console.warn(`No valid data for scatter plot: ${canvasId}`);
+        return;
+    }
     
     if (charts[canvasId]) {
         charts[canvasId].destroy();
@@ -784,7 +912,8 @@ function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, co
         data: {
             datasets: [{
                 data: data,
-                backgroundColor: color + '80'
+                backgroundColor: color + '80',
+                pointRadius: 3
             }]
         },
         options: {
@@ -792,8 +921,17 @@ function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, co
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { title: { display: true, text: xLabel } },
-                y: { title: { display: true, text: yLabel } }
+                x: { 
+                    title: { display: true, text: xLabel },
+                    beginAtZero: true
+                },
+                y: { 
+                    title: { display: true, text: yLabel },
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => yField.includes('assessed') ? '$' + (value / 1000).toFixed(0) + 'K' : value
+                    }
+                }
             }
         }
     });
