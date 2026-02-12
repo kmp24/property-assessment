@@ -254,8 +254,10 @@ function addPMTilesLayer(map, propertyType) {
                 });
 
                 // Add legend to the map
+                // Get containerId from the map's container element
+                const containerId = map.getContainer().id;
                 addMapLegend(map, containerId);
-
+                
                 // Collect data when features are rendered
                 map.on('data', (e) => {
                     if (e.sourceId === 'parcels' && e.isSourceLoaded) {
