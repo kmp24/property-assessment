@@ -498,16 +498,22 @@ function updateStatsUI() {
     
     ['residential', 'condo', 'commercial', 'vacant'].forEach(type => {
         const stats = statsData[type];
-        if (!stats || stats.count === 0) return;
+        if (!stats || !stats.count || stats.count === 0) return;
         
         const tab = document.getElementById(`${type}-content`);
         if (!tab) return;
         
         const cards = tab.querySelectorAll('.stat-value');
         if (cards.length >= 3) {
-            cards[0].textContent = '$' + Math.round(stats.total2020).toLocaleString();
-            cards[1].textContent = '$' + Math.round(stats.total2025).toLocaleString();
-            cards[2].textContent = stats.count.toLocaleString();
+            const total2020 = stats.total2020 || 0;
+            const total2025 = stats.total2025 || 0;
+            const count = stats.count || 0;
+            
+            cards[0].textContent = '$' + Math.round(total2020).toLocaleString();
+            cards[1].textContent = '$' + Math.round(total2025).toLocaleString();
+            cards[2].textContent = count.toLocaleString();
+            
+            console.log(`✓ Updated ${type} stats: ${count} parcels`);
         }
     });
 }
