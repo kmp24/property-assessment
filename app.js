@@ -404,10 +404,14 @@ function collectParcelData(map, propertyType) {
                 parcelId: props['Parcel ID'],
                 assessed2020: val2020,
                 assessed2025: val2025,
-                acreage: parseFloat(props['Acreage']) || 0,
-                style: props['Style'] || 'Unknown',
-                location: props['Location'] || 'Unknown',
-                zone: props['Zone'] || 'Unknown'
+                acreage: parseFloat(props['Land Acres']) || 0,  // Changed from 'Acreage'
+                style: props['Style Description'] || 'Unknown',  // Changed from 'Style'
+                location: props['Neighborhood'] || 'Unknown',    // Changed from 'Location'
+                zone: props['Zone'] || 'Unknown',
+                bedrooms: parseInt(props['Number of Bedroom']) || 0,
+                bathrooms: parseFloat(props['Number of Bathrooms']) || 0,
+                sqft: parseFloat(props['Gross Area of Primary Building']) || 0,
+                yearBuilt: parseInt(props['Effective Year Built']) || 0
             });
         }
     });
@@ -479,21 +483,35 @@ function showPopup(map, lngLat, props, color, propertyType) {
         ? ((assessment2025 - assessment2020) / assessment2020 * 100).toFixed(1)
         : '–';
     const pctColor = parseFloat(pct) > 0 ? '#16a34a' : '#dc2626';
+    
+    // Additional property details
+    const style = props['Style Description'] || '–';
+    const bedrooms = props['Number of Bedroom'] || '–';
+    const bathrooms = props['Number of Bathrooms'] || '–';
+    const sqft = props['Gross Area of Primary Building'] ? parseFloat(props['Gross Area of Primary Building']).toLocaleString() : '–';
+    const yearBuilt = props['Effective Year Built'] || '–';
+    const acres = props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2) : '–';
 
     new maplibregl.Popup()
         .setLngLat(lngLat)
         .setHTML(`
-            <div style="min-width:200px;font-size:13px;font-family:sans-serif;">
+            <div style="min-width:240px;font-size:13px;font-family:sans-serif;">
                 <div style="font-weight:700;margin-bottom:6px;">
                     ${props['Property Address'] || 'Unknown'}
                 </div>
                 <div style="color:${color};font-weight:600;font-size:11px;
                      text-transform:uppercase;margin-bottom:8px;">
-                    ${propertyType}
+                    ${propertyType} • Parcel ${props['Parcel ID'] || ''}
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:12px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee;">
+                    <div><span style="color:#666;">Style:</span> ${style}</div>
+                    <div><span style="color:#666;">Built:</span> ${yearBuilt}</div>
+                    <div><span style="color:#666;">Beds:</span> ${bedrooms}</div>
+                    <div><span style="color:#666;">Baths:</span> ${bathrooms}</div>
+                    <div><span style="color:#666;">Sq Ft:</span> ${sqft}</div>
+                    <div><span style="color:#666;">Acres:</span> ${acres}</div>
                 </div>
                 <table style="width:100%;border-collapse:collapse;">
-                    <tr><td style="color:#666;padding:2px 0;">Parcel</td>
-                        <td style="text-align:right;">${props['Parcel ID'] || 'Unknown'}</td></tr>
                     <tr><td style="color:#666;padding:2px 0;">2020</td>
                         <td style="text-align:right;">$${assessment2020.toLocaleString()}</td></tr>
                     <tr><td style="color:#666;padding:2px 0;">2025</td>

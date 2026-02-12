@@ -119,19 +119,42 @@
 
         /* Main Content */
         .main-content {
-            display: grid;
-            grid-template-columns: auto 1fr; /* first column fits content, second fills remaining space */
-            width: 100vw;
-            height: 100vh;
+            flex: 1;
+            display: flex;
             overflow: hidden;
+            height: calc(100vh - 140px);
         }
 
         /* Sidebar */
         .sidebar {
+            width: 340px;
             background: white;
             border-right: 1px solid var(--border);
             overflow-y: auto;
-            padding: 2rem;
+            padding: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            background: var(--bg);
+        }
+
+        /* Make cards scrollable */
+        .stats-row, .charts-grid, .map-card, .chart-card, .info-box {
+            margin-bottom: 1rem;
+        }
+
+        .map-wrapper {
+            height: 450px; /* Fixed map height */
+            position: relative;
+        }
+
+        .chart-wrapper {
+            height: 300px; /* Fixed chart height */
+            position: relative;
         }
 
         .info-section {
