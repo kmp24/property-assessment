@@ -224,10 +224,12 @@ function addPMTilesLayer(map, propertyType) {
                     url: 'pmtiles://./parcels.pmtiles'
                 });
 
-                // Color parcels by Zone instead of assessment value
-                const fillColorExpression = createZoneColorExpression();
+                // Get current symbolization
+                const currentSymbol = mapSymbolization[propertyType] || 'Zone';
+                const symbolOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === currentSymbol);
+                const fillColorExpression = createColorExpression(currentSymbol, symbolOption);
 
-                // Add fill layer with zone-based coloring
+                // Add fill layer with dynamic coloring
                 map.addLayer({
                     id: 'parcels-fill',
                     type: 'fill',
@@ -253,11 +255,10 @@ function addPMTilesLayer(map, propertyType) {
                     filter: createPropertyFilter(propertyType)
                 });
 
-                // Add legend to the map
-                // Get containerId from the map's container element
+                // Add legend to the map (get containerId from map's container)
                 const containerId = map.getContainer().id;
                 addMapLegend(map, containerId);
-                
+
                 // Collect data when features are rendered
                 map.on('data', (e) => {
                     if (e.sourceId === 'parcels' && e.isSourceLoaded) {
@@ -363,8 +364,114 @@ const ZONE_COLORS = {
     'default': '#a73097' // Light gray - Unknown
 };
 
+// Color schemes for different property types
+const PROPERTY_TYPE_COLORS = {
+    'Residential': '#3b82f6',
+    'Condominium': '#f59e0b',
+    'Commercial': '#8b5cf6',
+    'Vacant Land': '#10b981',
+    'default': '#94a3b8'
+};
+
+// Color ramps for continuous values (assessment values, year built, etc.)
+const VALUE_COLOR_RAMP = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
+const YEAR_COLOR_RAMP = ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
+
+// Available symbolization options
+const SYMBOLIZATION_OPTIONS = [
+    { value: 'Zone', label: 'Zone', type: 'categorical', colors: ZONE_COLORS },
+    { value: 'Property Type', label: 'Property Type', type: 'categorical', colors: PROPERTY_TYPE_COLORS },
+    { value: 'Assessed Total', label: '2025 Assessment Value', type: 'continuous', colorRamp: VALUE_COLOR_RAMP },
+    { value: 'Pre Year Assessed Total', label: '2020 Assessment Value', type: 'continuous', colorRamp: VALUE_COLOR_RAMP },
+    { value: 'Effective Year Built', label: 'Year Built', type: 'continuous', colorRamp: YEAR_COLOR_RAMP },
+    { value: 'State Use Description', label: 'State Use', type: 'categorical' },
+    { value: 'Neighborhood', label: 'Neighborhood', type: 'categorical' },
+    { value: 'Style Description', label: 'Building Style', type: 'categorical' }
+];
+
+// Track current symbolization for each map
+const mapSymbolization = {
+    residential: 'Zone',
+    condo: 'Zone',
+    commercial: 'Zone',
+    vacant: 'Zone'
+};
+
 function getZoneColor(zone) {
     return ZONE_COLORS[zone] || ZONE_COLORS['default'];
+}
+
+// Create color expression based on field and type
+function createColorExpression(field, symbolizationOption) {
+    if (!symbolizationOption) {
+        // Default to zone coloring
+        return createZoneColorExpression();
+    }
+
+    if (symbolizationOption.type === 'categorical') {
+        // Use predefined colors if available, otherwise generate
+        const colors = symbolizationOption.colors || {};
+        const expression = ['match', ['get', field]];
+        
+        // Add known colors
+        Object.entries(colors).forEach(([value, color]) => {
+            if (value !== 'default') {
+                expression.push(value, color);
+            }
+        });
+        
+        // Default color
+        expression.push(colors['default'] || '#94a3b8');
+        
+        return expression;
+    } else if (symbolizationOption.type === 'continuous') {
+        // Continuous data (assessment values, years, etc.)
+        const colorRamp = symbolizationOption.colorRamp;
+        
+        // Create interpolation expression
+        const expression = [
+            'interpolate',
+            ['linear'],
+            ['to-number', ['get', field], 0]
+        ];
+        
+        // Add color stops based on field
+        if (field.includes('Assessed')) {
+            // Assessment value stops
+            expression.push(
+                0, colorRamp[0],
+                100000, colorRamp[1],
+                300000, colorRamp[2],
+                500000, colorRamp[3],
+                1000000, colorRamp[4]
+            );
+        } else if (field.includes('Year')) {
+            // Year built stops
+            expression.push(
+                1800, colorRamp[0],
+                1900, colorRamp[1],
+                1950, colorRamp[2],
+                1980, colorRamp[3],
+                2000, colorRamp[4],
+                2010, colorRamp[5],
+                2025, colorRamp[6]
+            );
+        } else {
+            // Generic continuous scale
+            expression.push(
+                0, colorRamp[0],
+                25, colorRamp[1],
+                50, colorRamp[2],
+                75, colorRamp[3],
+                100, colorRamp[4]
+            );
+        }
+        
+        return expression;
+    }
+    
+    // Fallback
+    return createZoneColorExpression();
 }
 
 // Create zone-based color expression for map
@@ -388,6 +495,63 @@ function addMapLegend(map, containerId) {
     if (existingLegend) {
         existingLegend.remove();
     }
+
+    // Get property type from container ID
+    const propertyType = containerId.replace('Map', '');
+
+    // Create symbolization dropdown
+    const dropdownContainer = document.createElement('div');
+    dropdownContainer.className = 'symbolization-dropdown';
+    dropdownContainer.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: white;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 12px;
+        z-index: 1;
+        padding: 8px 10px;
+    `;
+
+    const label = document.createElement('label');
+    label.textContent = 'Color by: ';
+    label.style.cssText = `
+        font-weight: 500;
+        color: #333;
+        margin-right: 6px;
+    `;
+
+    const select = document.createElement('select');
+    select.style.cssText = `
+        padding: 4px 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        font-size: 12px;
+        cursor: pointer;
+        background: white;
+    `;
+
+    // Add options
+    SYMBOLIZATION_OPTIONS.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (opt.value === mapSymbolization[propertyType]) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+
+    // Handle change
+    select.addEventListener('change', (e) => {
+        const newField = e.target.value;
+        changeMapSymbolization(map, propertyType, newField, containerId);
+    });
+
+    dropdownContainer.appendChild(label);
+    dropdownContainer.appendChild(select);
 
     // Create legend container
     const legend = document.createElement('div');
@@ -420,7 +584,9 @@ function addMapLegend(map, containerId) {
     `;
 
     const title = document.createElement('div');
-    title.textContent = 'Zone Legend';
+    const currentField = mapSymbolization[propertyType] || 'Zone';
+    const currentOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === currentField);
+    title.textContent = currentOption ? currentOption.label : 'Legend';
     title.style.cssText = `
         font-weight: 600;
         font-size: 13px;
@@ -448,22 +614,17 @@ function addMapLegend(map, containerId) {
         overflow-y: auto;
     `;
 
-    // Get zones dynamically from ZONE_COLORS
-    const zones = Object.entries(ZONE_COLORS)
-        .filter(([zone]) => zone !== 'default')
-        .map(([zone, color]) => ({
-            zone,
-            color,
-            label: zone === 'B' ? 'Business' : zone === 'I' ? 'Industrial' : zone
-        }));
-    
-    // Add 'Other' at the end
-    zones.push({ zone: 'default', color: ZONE_COLORS['default'], label: 'Other' });
+    // Build legend based on symbolization type
+    if (currentOption && currentOption.type === 'categorical') {
+        buildCategoricalLegend(content, currentField, currentOption, map, propertyType);
+    } else if (currentOption && currentOption.type === 'continuous') {
+        buildContinuousLegend(content, currentField, currentOption);
+    } else {
+        // Default to zone legend
+        buildCategoricalLegend(content, 'Zone', SYMBOLIZATION_OPTIONS[0], map, propertyType);
+    }
 
-    // Track visibility state for each zone
-    const zoneVisibility = {};
-
-    zones.forEach(({ zone, color, label }) => {
+    legend.appendChild(content);
         zoneVisibility[zone] = true; // All visible by default
 
         const item = document.createElement('div');
@@ -562,10 +723,198 @@ function addMapLegend(map, containerId) {
         }
     });
 
-    // Add legend to map container
+    // Add dropdown and legend to map container
     const mapContainer = document.getElementById(containerId);
     if (mapContainer) {
+        mapContainer.appendChild(dropdownContainer);
         mapContainer.appendChild(legend);
+    }
+}
+
+// Change map symbolization
+function changeMapSymbolization(map, propertyType, field, containerId) {
+    // Update tracking
+    mapSymbolization[propertyType] = field;
+    
+    // Get symbolization option
+    const symbolOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === field);
+    if (!symbolOption) return;
+    
+    // Create new color expression
+    const newColorExpression = createColorExpression(field, symbolOption);
+    
+    // Update map paint property
+    if (map.getLayer('parcels-fill')) {
+        map.setPaintProperty('parcels-fill', 'fill-color', newColorExpression);
+    }
+    
+    // Rebuild legend
+    addMapLegend(map, containerId);
+}
+
+// Build categorical legend (zones, property types, etc.)
+function buildCategoricalLegend(content, field, symbolOption, map, propertyType) {
+    const colors = symbolOption.colors || {};
+    
+    // Get categories dynamically from colors
+    const categories = Object.entries(colors)
+        .filter(([key]) => key !== 'default')
+        .map(([value, color]) => ({
+            value,
+            color,
+            label: value === 'B' ? 'Business' : value === 'I' ? 'Industrial' : value
+        }));
+    
+    // Add 'Other' at the end
+    if (colors['default']) {
+        categories.push({ value: 'default', color: colors['default'], label: 'Other' });
+    }
+
+    // Track visibility state
+    const visibility = {};
+
+    categories.forEach(({ value, color, label }) => {
+        visibility[value] = true;
+
+        const item = document.createElement('div');
+        item.style.cssText = `
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 3px;
+            transition: background 0.15s;
+        `;
+
+        item.addEventListener('mouseenter', () => item.style.background = '#f8f9fa');
+        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.style.cssText = 'margin-right: 8px; cursor: pointer;';
+
+        const colorBox = document.createElement('div');
+        colorBox.style.cssText = `
+            width: 20px;
+            height: 14px;
+            background: ${color};
+            margin-right: 8px;
+            border-radius: 2px;
+            border: 1px solid rgba(0,0,0,0.1);
+            flex-shrink: 0;
+        `;
+
+        const labelText = document.createElement('span');
+        labelText.textContent = label;
+        labelText.style.cssText = 'color: #666; font-size: 12px; flex: 1;';
+
+        const toggleItem = () => {
+            visibility[value] = !visibility[value];
+            checkbox.checked = visibility[value];
+            
+            if (!visibility[value]) {
+                colorBox.style.opacity = '0.3';
+                labelText.style.opacity = '0.5';
+            } else {
+                colorBox.style.opacity = '1';
+                labelText.style.opacity = '1';
+            }
+            
+            updateCategoricalMapFilter(map, field, visibility, propertyType);
+        };
+
+        checkbox.addEventListener('change', toggleItem);
+        item.addEventListener('click', (e) => {
+            if (e.target !== checkbox) toggleItem();
+        });
+
+        item.appendChild(checkbox);
+        item.appendChild(colorBox);
+        item.appendChild(labelText);
+        content.appendChild(item);
+    });
+}
+
+// Build continuous legend (gradients for values)
+function buildContinuousLegend(content, field, symbolOption) {
+    const colorRamp = symbolOption.colorRamp;
+    
+    const gradientBar = document.createElement('div');
+    gradientBar.style.cssText = `
+        width: 100%;
+        height: 20px;
+        background: linear-gradient(to right, ${colorRamp.join(', ')});
+        border-radius: 3px;
+        margin-bottom: 8px;
+        border: 1px solid rgba(0,0,0,0.1);
+    `;
+    content.appendChild(gradientBar);
+    
+    const labelsContainer = document.createElement('div');
+    labelsContainer.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #666;
+    `;
+    
+    let minLabel, maxLabel;
+    if (field.includes('Assessed')) {
+        minLabel = '$0';
+        maxLabel = '$1M+';
+    } else if (field.includes('Year')) {
+        minLabel = '1800';
+        maxLabel = '2025';
+    } else {
+        minLabel = 'Low';
+        maxLabel = 'High';
+    }
+    
+    const minSpan = document.createElement('span');
+    minSpan.textContent = minLabel;
+    const maxSpan = document.createElement('span');
+    maxSpan.textContent = maxLabel;
+    
+    labelsContainer.appendChild(minSpan);
+    labelsContainer.appendChild(maxSpan);
+    content.appendChild(labelsContainer);
+}
+
+// Update map filter for categorical fields
+function updateCategoricalMapFilter(map, field, visibility, propertyType) {
+    const visibleValues = Object.entries(visibility)
+        .filter(([value, visible]) => visible && value !== 'default')
+        .map(([value]) => value);
+    
+    let categoryFilter;
+    if (visibleValues.length === 0) {
+        categoryFilter = ['==', ['get', field], 'NONE'];
+    } else {
+        categoryFilter = ['any', 
+            ...visibleValues.map(value => ['==', ['get', field], value])
+        ];
+        
+        if (visibility['default']) {
+            const knownValues = Object.keys(visibility).filter(v => v !== 'default');
+            categoryFilter = ['any',
+                ...visibleValues.map(value => ['==', ['get', field], value]),
+                ['!', ['in', ['get', field], ['literal', knownValues]]]
+            ];
+        }
+    }
+    
+    const propertyTypeFilter = createPropertyFilter(propertyType);
+    const combinedFilter = propertyTypeFilter[0] === 'all' 
+        ? categoryFilter 
+        : ['all', propertyTypeFilter, categoryFilter];
+    
+    if (map.getLayer('parcels-fill')) {
+        map.setFilter('parcels-fill', combinedFilter);
+    }
+    if (map.getLayer('parcels-outline')) {
+        map.setFilter('parcels-outline', combinedFilter);
     }
 }
 
