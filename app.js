@@ -204,6 +204,9 @@ function addPMTilesLayer(map, propertyType) {
     return new Promise((resolve) => {
         const color = COLORS[propertyType];
         
+        // Store property type on map for legend filtering
+        map._propertyType = propertyType;
+        
         const addLayers = () => {
             console.log(`Adding layer for ${propertyType}...`);
             
@@ -249,6 +252,9 @@ function addPMTilesLayer(map, propertyType) {
                     },
                     filter: createPropertyFilter(propertyType)
                 });
+
+                // Add legend to the map
+                addMapLegend(map, containerId);
 
                 // Collect data when features are rendered
                 map.on('data', (e) => {
@@ -371,6 +377,240 @@ function createZoneColorExpression() {
     expression.push(ZONE_COLORS['default']); // default color
     
     return expression;
+}
+
+// Add interactive legend to map with toggle functionality
+function addMapLegend(map, containerId) {
+    // Check if legend already exists
+    const existingLegend = document.querySelector(`#${containerId} .map-legend`);
+    if (existingLegend) {
+        existingLegend.remove();
+    }
+
+    // Create legend container
+    const legend = document.createElement('div');
+    legend.className = 'map-legend';
+    legend.style.cssText = `
+        position: absolute;
+        bottom: 30px;
+        right: 10px;
+        background: white;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 12px;
+        z-index: 1;
+        max-width: 180px;
+        overflow: hidden;
+    `;
+
+    // Add header with collapse/expand button
+    const header = document.createElement('div');
+    header.style.cssText = `
+        padding: 10px 12px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = 'Zone Legend';
+    title.style.cssText = `
+        font-weight: 600;
+        font-size: 13px;
+        color: #333;
+    `;
+
+    const toggleIcon = document.createElement('div');
+    toggleIcon.textContent = '▼';
+    toggleIcon.style.cssText = `
+        font-size: 10px;
+        color: #666;
+        transition: transform 0.2s;
+    `;
+
+    header.appendChild(title);
+    header.appendChild(toggleIcon);
+    legend.appendChild(header);
+
+    // Create content container
+    const content = document.createElement('div');
+    content.className = 'legend-content';
+    content.style.cssText = `
+        padding: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+    `;
+
+    // Get zones dynamically from ZONE_COLORS
+    const zones = Object.entries(ZONE_COLORS)
+        .filter(([zone]) => zone !== 'default')
+        .map(([zone, color]) => ({
+            zone,
+            color,
+            label: zone === 'B' ? 'Business' : zone === 'I' ? 'Industrial' : zone
+        }));
+    
+    // Add 'Other' at the end
+    zones.push({ zone: 'default', color: ZONE_COLORS['default'], label: 'Other' });
+
+    // Track visibility state for each zone
+    const zoneVisibility = {};
+
+    zones.forEach(({ zone, color, label }) => {
+        zoneVisibility[zone] = true; // All visible by default
+
+        const item = document.createElement('div');
+        item.style.cssText = `
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 3px;
+            transition: background 0.15s;
+        `;
+        item.className = 'legend-item';
+
+        // Hover effect
+        item.addEventListener('mouseenter', () => {
+            item.style.background = '#f8f9fa';
+        });
+        item.addEventListener('mouseleave', () => {
+            item.style.background = 'transparent';
+        });
+
+        // Checkbox
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.style.cssText = `
+            margin-right: 8px;
+            cursor: pointer;
+        `;
+
+        // Color box
+        const colorBox = document.createElement('div');
+        colorBox.style.cssText = `
+            width: 20px;
+            height: 14px;
+            background: ${color};
+            margin-right: 8px;
+            border-radius: 2px;
+            border: 1px solid rgba(0,0,0,0.1);
+            flex-shrink: 0;
+        `;
+
+        // Label
+        const labelText = document.createElement('span');
+        labelText.textContent = label;
+        labelText.style.cssText = `
+            color: #666;
+            font-size: 12px;
+            flex: 1;
+        `;
+
+        // Toggle zone visibility on click
+        const toggleZone = () => {
+            zoneVisibility[zone] = !zoneVisibility[zone];
+            checkbox.checked = zoneVisibility[zone];
+            
+            // Update map filter
+            updateMapFilter(map, zoneVisibility);
+            
+            // Update visual feedback
+            if (!zoneVisibility[zone]) {
+                colorBox.style.opacity = '0.3';
+                labelText.style.opacity = '0.5';
+            } else {
+                colorBox.style.opacity = '1';
+                labelText.style.opacity = '1';
+            }
+        };
+
+        checkbox.addEventListener('change', toggleZone);
+        item.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                toggleZone();
+            }
+        });
+
+        item.appendChild(checkbox);
+        item.appendChild(colorBox);
+        item.appendChild(labelText);
+        content.appendChild(item);
+    });
+
+    legend.appendChild(content);
+
+    // Toggle expand/collapse
+    let isExpanded = true;
+    header.addEventListener('click', () => {
+        isExpanded = !isExpanded;
+        if (isExpanded) {
+            content.style.display = 'block';
+            toggleIcon.style.transform = 'rotate(0deg)';
+        } else {
+            content.style.display = 'none';
+            toggleIcon.style.transform = 'rotate(-90deg)';
+        }
+    });
+
+    // Add legend to map container
+    const mapContainer = document.getElementById(containerId);
+    if (mapContainer) {
+        mapContainer.appendChild(legend);
+    }
+}
+
+// Update map filter based on zone visibility
+function updateMapFilter(map, zoneVisibility) {
+    // Get visible zones
+    const visibleZones = Object.entries(zoneVisibility)
+        .filter(([zone, visible]) => visible && zone !== 'default')
+        .map(([zone]) => zone);
+    
+    // Build filter expression
+    let zoneFilter;
+    if (visibleZones.length === 0) {
+        // If no zones selected, show nothing
+        zoneFilter = ['==', ['get', 'Zone'], 'NONE'];
+    } else if (visibleZones.length === Object.keys(zoneVisibility).length - 1) {
+        // If all zones selected (except default), show all
+        zoneFilter = ['all'];
+    } else {
+        // Show only selected zones
+        zoneFilter = ['any', 
+            ...visibleZones.map(zone => ['==', ['get', 'Zone'], zone])
+        ];
+        
+        // Include 'Other' if selected
+        if (zoneVisibility['default']) {
+            const knownZones = Object.keys(ZONE_COLORS).filter(z => z !== 'default');
+            zoneFilter = ['any',
+                ...visibleZones.map(zone => ['==', ['get', 'Zone'], zone]),
+                ['!', ['in', ['get', 'Zone'], ['literal', knownZones]]]
+            ];
+        }
+    }
+    
+    // Combine with property type filter
+    const propertyTypeFilter = createPropertyFilter(map._propertyType || 'residential');
+    const combinedFilter = propertyTypeFilter[0] === 'all' 
+        ? zoneFilter 
+        : ['all', propertyTypeFilter, zoneFilter];
+    
+    // Update both layers
+    if (map.getLayer('parcels-fill')) {
+        map.setFilter('parcels-fill', combinedFilter);
+    }
+    if (map.getLayer('parcels-outline')) {
+        map.setFilter('parcels-outline', combinedFilter);
+    }
 }
 
 function collectParcelData(map, propertyType) {
