@@ -351,7 +351,7 @@ const ZONE_COLORS = {
     'R-80': '#ef4444',   // Red
     'B': '#8b5cf6',      // Purple - Business
     'I': '#64748b',      // Gray - Industrial
-    'default': '#94a3b8' // Light gray - Unknown
+    'default': '#a73097' // Light gray - Unknown
 };
 
 function getZoneColor(zone) {
@@ -598,7 +598,7 @@ function updateChartsForType(propertyType) {
 }
 
 function updateResidentialCharts(parcels) {
-    console.log(`Creating residential charts with ${parcels.length} parcels`);
+    console.log(`🔄 Creating residential charts with ${parcels.length} parcels`);
     
     // Average Building Assessment by Design (residentialDesignChart exists in HTML)
     const avgByStyle = {};
@@ -622,6 +622,8 @@ function updateResidentialCharts(parcels) {
     const topAvgStyles = Object.entries(avgByStyle)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
+    
+    console.log(`Residential design chart data: ${topAvgStyles.length} styles`);
     
     createOrUpdateChart('residentialDesignChart', {
         type: 'bar',
@@ -854,26 +856,41 @@ function updateVacantCharts(parcels) {
 
 function createOrUpdateChart(canvasId, config) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
+    if (!canvas) {
+        console.warn(`❌ Canvas not found: ${canvasId}`);
+        return;
+    }
+    
+    console.log(`✓ Creating chart: ${canvasId}`);
     
     if (charts[canvasId]) {
         charts[canvasId].destroy();
     }
     
-    charts[canvasId] = new Chart(canvas, config);
+    try {
+        charts[canvasId] = new Chart(canvas, config);
+        console.log(`✓ Chart created successfully: ${canvasId}`);
+    } catch (error) {
+        console.error(`❌ Error creating chart ${canvasId}:`, error);
+    }
 }
 
 function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, color) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
+    if (!canvas) {
+        console.warn(`❌ Canvas not found for scatter: ${canvasId}`);
+        return;
+    }
     
     // Filter out parcels with invalid/zero values
     const data = parcels
         .filter(p => p[xField] > 0 && p[yField] > 0)
         .map(p => ({ x: p[xField], y: p[yField] }));
     
+    console.log(`Creating scatter plot ${canvasId}: ${data.length} points from ${parcels.length} parcels`);
+    
     if (data.length === 0) {
-        console.warn(`No valid data for scatter plot: ${canvasId}`);
+        console.warn(`⚠️ No valid data for scatter plot: ${canvasId} (all values were 0 or negative)`);
         return;
     }
     
@@ -881,34 +898,39 @@ function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, co
         charts[canvasId].destroy();
     }
     
-    charts[canvasId] = new Chart(canvas, {
-        type: 'scatter',
-        data: {
-            datasets: [{
-                data: data,
-                backgroundColor: color + '80',
-                pointRadius: 3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { 
-                    title: { display: true, text: xLabel },
-                    beginAtZero: true
-                },
-                y: { 
-                    title: { display: true, text: yLabel },
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => yField.includes('assessed') ? '$' + (value / 1000).toFixed(0) + 'K' : value
+    try {
+        charts[canvasId] = new Chart(canvas, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    data: data,
+                    backgroundColor: color + '80',
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { 
+                        title: { display: true, text: xLabel },
+                        beginAtZero: true
+                    },
+                    y: { 
+                        title: { display: true, text: yLabel },
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => yField.includes('assessed') ? '$' + (value / 1000).toFixed(0) + 'K' : value
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+        console.log(`✓ Scatter plot created: ${canvasId}`);
+    } catch (error) {
+        console.error(`❌ Error creating scatter plot ${canvasId}:`, error);
+    }
 }
 
 // ─── Tab Switching ────────────────────────────────────────────────────────────
@@ -988,7 +1010,7 @@ function showPMTilesError(errorMsg) {
             <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">
                 The app cannot find <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;">parcels.pmtiles</code> file.
             </p>
-            <div style="background:#f9fafb;border-left:3px solid #6b8cae;padding:1rem;margin-bottom:1rem;">
+            <div style="background:#f9fafb;border-left:3px solid #0979e9;padding:1rem;margin-bottom:1rem;">
                 <p style="font-size:.875rem;margin-bottom:.75rem;"><strong>Troubleshooting:</strong></p>
                 <ol style="font-size:.875rem;line-height:1.6;color:#666;padding-left:1.25rem;">
                     <li>Make sure <code>parcels.pmtiles</code> is in the same folder as <code>index.html</code></li>
