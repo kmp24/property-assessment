@@ -133,14 +133,31 @@ function createBasicMap(containerId, center, zoom) {
             layers: [{
                 id: 'osm',
                 type: 'raster',
-                source: 'osm'
+                source: 'osm',
+                paint: {
+                    'raster-opacity': 0.8
+                }
             }]
         },
         center: center,
-        zoom: zoom
+        zoom: zoom,
+        fadeDuration: 0  // Disable fade to speed up rendering
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    
+    // Add error handling
+    map.on('error', (e) => {
+        console.warn(`Map error in ${containerId}:`, e.error);
+    });
+    
+    // Force load event after timeout if it doesn't fire
+    setTimeout(() => {
+        if (!map.loaded()) {
+            console.log(`Forcing load event for ${containerId}`);
+            map.fire('load');
+        }
+    }, 3000);
     
     return map;
 }
@@ -283,14 +300,38 @@ function addPMTilesLayer(map, propertyType) {
             }
         };
         
-        // Check if map is already loaded
-        if (map.loaded()) {
-            console.log(`Map already loaded for ${propertyType}, adding layers immediately`);
-            addLayers();
-        } else {
-            console.log(`Waiting for ${propertyType} map to load...`);
-            map.once('load', addLayers);
-        }
+        // Try multiple times to add layers
+        const tryAddLayers = () => {
+            if (map.loaded()) {
+                console.log(`Map loaded for ${propertyType}, adding layers immediately`);
+                addLayers();
+            } else if (map.isStyleLoaded && map.isStyleLoaded()) {
+                console.log(`Style loaded for ${propertyType}, adding layers now`);
+                addLayers();
+            } else {
+                console.log(`Waiting for ${propertyType} map to load...`);
+                // Try on both 'load' and 'style.load' events
+                const onLoad = () => {
+                    map.off('load', onLoad);
+                    map.off('style.load', onLoad);
+                    addLayers();
+                };
+                map.once('load', onLoad);
+                map.once('style.load', onLoad);
+                
+                // Timeout fallback - force it after 5 seconds
+                setTimeout(() => {
+                    if (!map.getSource('parcels')) {
+                        console.log(`Timeout for ${propertyType}, forcing layer add...`);
+                        map.off('load', onLoad);
+                        map.off('style.load', onLoad);
+                        addLayers();
+                    }
+                }, 5000);
+            }
+        };
+        
+        tryAddLayers();
     });
 }
 

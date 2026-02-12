@@ -5,19 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Property Assessment Dashboard - Newington 2025 Revaluation</title>
     
-    <!-- Preconnect to CDNs for faster loading -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
-    <!-- MapLibre GL JS - Preload for priority loading -->
-    <link rel="preload" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.js" as="script">
-    <link rel="preload" href="https://cdn.jsdelivr.net/npm/pmtiles@3.0.7/dist/pmtiles.min.js" as="script">
-    
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <!-- Self-hosted libraries for FAST loading (no CDN dependency) -->
+    <link rel="stylesheet" href="libs/maplibre-gl.css" />
     
     <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     
     <style>
@@ -637,8 +630,8 @@
             max-width: 350px;
             text-align: center;
             line-height: 1.5;">
-            Loading map libraries from CDN...<br>
-            This usually takes 5-15 seconds on first visit.
+            Loading from self-hosted libraries...<br>
+            This should take just a few seconds!
         </p>
     </div>
     <style>
@@ -694,14 +687,12 @@
         </div>
     </div>
 
-    <!-- Load libraries asynchronously at end of body for faster page load -->
-    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pmtiles@3.0.7/dist/pmtiles.min.js"></script>
-    
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Self-hosted libraries (FAST - no CDN delay!) -->
+    <script src="libs/maplibre-gl.min.js"></script>
+    <script src="libs/pmtiles.min.js"></script>
+    <script src="libs/chart.umd.min.js"></script>
 
-    <!-- Main Application Script (ES module - reads PMTiles with MapLibre) -->
+    <!-- Main Application Script -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
