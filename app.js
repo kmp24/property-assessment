@@ -598,66 +598,9 @@ function updateChartsForType(propertyType) {
 }
 
 function updateResidentialCharts(parcels) {
-    // Value Distribution Chart
-    const valueRanges = {
-        '<$200K': 0, '$200-300K': 0, '$300-400K': 0, 
-        '$400-500K': 0, '>$500K': 0
-    };
+    console.log(`Creating residential charts with ${parcels.length} parcels`);
     
-    parcels.forEach(p => {
-        if (p.assessed2025 < 200000) valueRanges['<$200K']++;
-        else if (p.assessed2025 < 300000) valueRanges['$200-300K']++;
-        else if (p.assessed2025 < 400000) valueRanges['$300-400K']++;
-        else if (p.assessed2025 < 500000) valueRanges['$400-500K']++;
-        else valueRanges['>$500K']++;
-    });
-    
-    createOrUpdateChart('residentialValueChart', {
-        type: 'bar',
-        data: {
-            labels: Object.keys(valueRanges),
-            datasets: [{
-                label: 'Number of Properties',
-                data: Object.values(valueRanges),
-                backgroundColor: COLORS.residential
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-    
-    // Style Distribution
-    const styleCount = {};
-    parcels.forEach(p => {
-        styleCount[p.style] = (styleCount[p.style] || 0) + 1;
-    });
-    
-    const topStyles = Object.entries(styleCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    createOrUpdateChart('residentialStyleChart', {
-        type: 'bar',
-        data: {
-            labels: topStyles.map(s => s[0]),
-            datasets: [{
-                label: 'Count',
-                data: topStyles.map(s => s[1]),
-                backgroundColor: COLORS.residential
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } }
-        }
-    });
-    
-    // Average Building Assessment by Design
+    // Average Building Assessment by Design (residentialDesignChart exists in HTML)
     const avgByStyle = {};
     const countByStyle = {};
     
@@ -713,13 +656,13 @@ function updateResidentialCharts(parcels) {
         }
     });
     
-    // Scatter plot
+    // Scatter plot (residentialScatter exists in HTML)
     createScatterPlot('residentialScatter', parcels, 'acreage', 'assessed2025', 
         'Acreage', 'Assessment Value', COLORS.residential);
 }
 
 function updateCondoCharts(parcels) {
-    // Average by Style
+    // Average by Style (condoStyleChart exists)
     const avgByStyle = {};
     const countByStyle = {};
     
@@ -774,7 +717,7 @@ function updateCondoCharts(parcels) {
         }
     });
     
-    // Unit Location Distribution (using Neighborhood field)
+    // Unit Location Distribution (condoLocationChart exists - using Neighborhood)
     const locationCount = {};
     parcels.forEach(p => {
         if (p.neighborhood && p.neighborhood !== 'Unknown') {
@@ -801,13 +744,44 @@ function updateCondoCharts(parcels) {
         }
     });
     
-    // 2025 Assessed Value vs. Finished Area (Sq Ft)
+    // Scatter plot (condoScatter exists)
     createScatterPlot('condoScatter', parcels, 'sqft', 'assessed2025',
         'Finished Area (Sq Ft)', 'Assessment Value', COLORS.condo);
 }
 
 function updateCommercialCharts(parcels) {
-    // Use Category Distribution (using State Use Description field)
+    // Building Assessment by Class (using commercialClassChart)
+    // Group by Zone for class distribution
+    const zoneCount = {};
+    parcels.forEach(p => {
+        if (p.zone && p.zone !== 'Unknown') {
+            zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
+        }
+    });
+    
+    const topZones = Object.entries(zoneCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    
+    createOrUpdateChart('commercialClassChart', {
+        type: 'bar',
+        data: {
+            labels: topZones.map(z => z[0]),
+            datasets: [{
+                label: 'Count',
+                data: topZones.map(z => z[1]),
+                backgroundColor: COLORS.commercial
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } }
+        }
+    });
+    
+    // Use Category Distribution (using commercialUseChart and State Use Description)
     const useCount = {};
     parcels.forEach(p => {
         if (p.stateUse && p.stateUse !== 'Unknown') {
@@ -819,7 +793,7 @@ function updateCommercialCharts(parcels) {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
     
-    createOrUpdateChart('commercialClassChart', {
+    createOrUpdateChart('commercialUseChart', {
         type: 'bar',
         data: {
             labels: topUses.map(u => u[0]),
@@ -837,13 +811,13 @@ function updateCommercialCharts(parcels) {
         }
     });
     
-    // Scatter - Area vs Assessment
+    // Scatter - commercialScatter
     createScatterPlot('commercialScatter', parcels, 'sqft', 'assessed2025',
         'Building Area (Sq Ft)', 'Assessment', COLORS.commercial);
 }
 
 function updateVacantCharts(parcels) {
-    // Primary Use Distribution (using State Use Description field)
+    // Primary Use Distribution (vacantUseChart exists - using State Use Description)
     const useCount = {};
     parcels.forEach(p => {
         if (p.stateUse && p.stateUse !== 'Unknown') {
@@ -873,7 +847,7 @@ function updateVacantCharts(parcels) {
         }
     });
     
-    // Assessment Value vs Acreage
+    // Assessment Value vs Acreage (vacantScatter exists)
     createScatterPlot('vacantScatter', parcels, 'acreage', 'assessed2025',
         'Acreage', 'Assessment Value', COLORS.vacant);
 }
