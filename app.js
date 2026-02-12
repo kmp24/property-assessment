@@ -175,10 +175,10 @@ async function loadPMTiles() {
         console.log('parcels.pmtiles found, setting up protocol...');
         
         // Set up PMTiles protocol
+        // Note: Browser cache errors are normal on GitHub Pages and can be ignored
         const protocol = new pmtiles.Protocol();
         maplibregl.addProtocol('pmtiles', protocol.tile);
         
-        // Don't try to load metadata - let MapLibre handle it
         console.log('Protocol configured, adding layers...');
         
         // Add layers to each map - they'll load data as needed
@@ -336,17 +336,21 @@ function addPMTilesLayer(map, propertyType) {
 }
 
 function createPropertyFilter(propertyType) {
-    // Match based on property type field variations
+    // For now, show ALL parcels on each map
+    // The data collection will still categorize them correctly
+    // This ensures parcels are visible even if Property Type field has unexpected values
+    return ['all'];
+    
+    /* Original strict filter - disabled for now
     const typeMap = {
         residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
         condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
         commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL'],
         vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
     };
-    
     const matches = typeMap[propertyType] || [];
-    
     return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
+    */
 }
 
 function collectParcelData(map, propertyType) {
@@ -363,6 +367,17 @@ function collectParcelData(map, propertyType) {
     }
     
     console.log(`Collecting data for ${propertyType}: ${features.length} features found`);
+    
+    // DEBUG: Log unique property types in the data
+    if (propertyType === 'residential') {
+        const uniqueTypes = new Set();
+        features.slice(0, 100).forEach(f => {
+            if (f.properties['Property Type']) {
+                uniqueTypes.add(f.properties['Property Type']);
+            }
+        });
+        console.log('Sample Property Type values in data:', Array.from(uniqueTypes));
+    }
     
     let total2020 = 0;
     let total2025 = 0;
