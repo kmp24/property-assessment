@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Property Assessment Value — Property Assessment Dashboard</title>
+<title>Property Assessment Value Dashboard</title>
 
 <!-- External Dependencies -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -279,7 +279,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 /* ─── Dashboard Layout ─────────────────────────────────────────────────────── */
 .dashboard {
   display: none; flex: 1; overflow: hidden;
-  grid-template-columns: var(--left-width, 320px) 1fr var(--right-width, 280px);
+  grid-template-columns: var(--left-width, 400px) 1fr var(--right-width, 380px);
   grid-template-rows: 1fr;
 }
 .dashboard.active { display: grid; }
@@ -453,13 +453,14 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 /* ─── Charts (D3) ──────────────────────────────────────────────────────────── */
 .chart-wrap {
   position: relative;
-  height: 160px;
+  height: 200px;
   margin-top: .5rem;
-  overflow: hidden;
+  overflow-y: auto; 
   flex-shrink: 0;
 }
 .chart-wrap.tall {
-  height: 220px;
+  height: 280px;
+  overflow-y: auto;
 }
 .scatter-controls {
   display: flex; gap: .35rem; margin-bottom: .5rem;
@@ -645,22 +646,15 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
     <div class="feature">
       <div class="feature-icon">🗺️</div>
       <div>
-        <div class="feature-title">Interactive Mapping</div>
-        <div class="feature-desc">Visualize parcels with dynamic symbolization and instant detail popups</div>
+        <div class="feature-title">Your Property Assessment Value</div>
+        <div class="feature-desc">Understand what characteristics affect your property's value</div>
       </div>
     </div>
     <div class="feature">
       <div class="feature-icon">📊</div>
       <div>
-        <div class="feature-title">Interactive D3 Charts</div>
-        <div class="feature-desc">All charts support zoom and pan — drag to explore your data</div>
-      </div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🎯</div>
-      <div>
-        <div class="feature-title">Smart Filtering</div>
-        <div class="feature-desc">Toggle between property types to focus on what matters most</div>
+        <div class="feature-title">Interactive Charts</div>
+        <div class="feature-desc">View neighborhoods, property styles, and property use</div>
       </div>
     </div>
   </div>
@@ -695,8 +689,9 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
       <div class="panel-section chart-panel">
         <div class="panel-heading">Assessment vs. Size<span id="res-scatter-count"></span></div>
         <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('residential','sqft','assessed2022',this)">Living Area → Value</button>
+          <button class="scatter-btn active" onclick="setScatterAxes('residential','sqft','assessed2022',this)">2022 Assess vs Living Area</button>
           <button class="scatter-btn" onclick="setScatterAxes('residential','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+          <button class="scatter-btn" onclick="setScatterAxes('residential','acreage','assessed2022',this)">2022 Assess vs Acres</button>
         </div>
         <div class="scatter-wrap">
           <div id="resScatter" class="d3-chart"></div>
@@ -723,7 +718,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
           <div class="stat-val" id="res-total20">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-lbl">Parcels</div>
+          <div class="stat-lbl">Parcels Assessed</div>
           <div class="stat-val" id="res-count">—</div>
         </div>
         <div class="stat-card">
@@ -751,7 +746,6 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
           <option value="Assessed Total">2022 Assessment Value</option>
           <option value="Pre Year Assessed Total">2020 Assessment Value</option>
           <option value="Effective Year Built">Year Built</option>
-          <option value="Neighborhood">Neighborhood</option>
           <option value="Style Description">Architectural Style</option>
         </select>
         <div class="panel-heading" style="margin-top:.5rem">Legend</div>
@@ -772,17 +766,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
       <div class="panel-section chart-panel">
         <div class="panel-heading">Assessment vs. Size<span id="condo-scatter-count"></span></div>
         <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('condo','sqft','assessed2022',this)">Living Area → Value</button>
-          <button class="scatter-btn" onclick="setScatterAxes('condo','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+          <button class="scatter-btn active" onclick="setScatterAxes('condo','sqft','assessed2022',this)">2022 Assess vs Value</button>
+          <button class="scatter-btn" onclick="setScatterAxes('condo','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
         </div>
         <div class="scatter-wrap">
           <div id="condoScatter" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section chart-panel">
-        <div class="panel-heading">Neighborhood Distribution</div>
-        <div class="chart-wrap">
-          <div id="condoNeighborhoodChart" class="d3-chart"></div>
         </div>
       </div>
     </div>
@@ -854,8 +842,8 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
       <div class="panel-section chart-panel">
         <div class="panel-heading">Assessment vs. Size<span id="commercial-scatter-count"></span></div>
         <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('commercial','sqft','assessed2022',this)">Living Area → Value</button>
-          <button class="scatter-btn" onclick="setScatterAxes('commercial','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+          <button class="scatter-btn active" onclick="setScatterAxes('commercial','sqft','assessed2022',this)">2022 Assess vs Living Area</button>
+          <button class="scatter-btn" onclick="setScatterAxes('commercial','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
         </div>
         <div class="scatter-wrap">
           <div id="commercialScatter" class="d3-chart"></div>
@@ -941,17 +929,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
       <div class="panel-section chart-panel">
         <div class="panel-heading">Assessment vs. Acreage<span id="vacant-scatter-count"></span></div>
         <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">Acres → Value</button>
-          <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">2022 Assess vs Acres/button>
+          <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
         </div>
         <div class="scatter-wrap">
           <div id="vacantScatter" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section chart-panel">
-        <div class="panel-heading">State Use Distribution</div>
-        <div class="chart-wrap">
-          <div id="vacantUseChart" class="d3-chart"></div>
         </div>
       </div>
     </div>

@@ -69,7 +69,7 @@ const CATEGORICAL_PALETTE = [
 ];
 
 const VALUE_RAMP   = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
-const YEAR_RAMP    = ['#f0f0f0','#bdc9e1','#74a9cf','#2b8cbe','#045a8d'];
+const YEAR_RAMP    = ['#ffffcc','#a1dab4','#41b6c4','#2c7fb8','#253494'];
 const ACREAGE_RAMP = ['#edf8fb','#b3cde3','#8c96c6','#8856a7','#810f7c'];
 
 const SYMBOLIZATION_OPTIONS = [
@@ -87,7 +87,7 @@ const SYMBOLIZATION_OPTIONS = [
 const mapSymbolization = { residential:'Zone', condo:'Zone', commercial:'Zone', vacant:'Zone' };
 
 const AXIS_LABELS = {
-  sqft:'Living Area', acreage:'Acreage (ac)', yearBuilt:'Year Built',
+  sqft:'Living Area (sf)', acreage:'Acreage (ac)', yearBuilt:'Year Built',
   assessed2020:'2020 Assessment', assessed2022:'2022 Assessment'
 };
 
@@ -332,7 +332,7 @@ function showParcelDetail(props, type) {
     ['Neighborhood',props['Neighborhood']],
     ['Style',      props['Style Description']],
     ['Year Built', props['Effective Year Built']],
-    ['Living Area',props['Gross Area of Primary Building'] ? Math.round(parseFloat(props['Gross Area of Primary Building'])).toLocaleString()+' sf' : null],
+    ['Living Area',props['Living Area'] ? Math.round(parseFloat(props['Living Area'])).toLocaleString()+' sf' : null],
     ['Acres',      props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
     ['Bedrooms',   props['Number of Bedroom']],
     ['Bathrooms',  props['Number of Bathrooms']],
@@ -358,12 +358,12 @@ function colorExpr(field, opt, type) {
     let stops = [];
     if (type && parcelData[type]?.length) {
       const parcels = parcelData[type];
-      if (field.includes('Year')) {
+      if (field.includes('Year Built')) {
         const years = parcels.map(p=>p.yearBuilt).filter(y=>y>0);
         if (years.length) {
           const min=Math.min(...years), max=Math.max(...years), step=(max-min)/5;
           stops=[min]; for(let i=1;i<5;i++) stops.push(Math.floor(min+step*i)); stops.push(max);
-        } else stops=[1900,1940,1960,1980,2000,2020];
+        } else stops=[1900,1940,1960,1980,2000,2020,2026];
       } else if (field==='Land Acres') {
         const acres=parcels.map(p=>p.acreage).filter(a=>a>0);
         if (acres.length) { const s=acres.sort((a,b)=>a-b); stops=[0,s[Math.floor(s.length*.2)],s[Math.floor(s.length*.4)],s[Math.floor(s.length*.6)],s[Math.floor(s.length*.8)],s[s.length-1]]; }
@@ -374,7 +374,7 @@ function colorExpr(field, opt, type) {
         else stops=[0,100000,300000,600000,1000000,2000000];
       }
     } else {
-      if (field.includes('Year')) stops=[1900,1940,1960,1980,2000,2020];
+      if (field.includes('Year Built')) stops=[1900,1940,1960,1980,2000,2020];
       else if (field==='Land Acres') stops=[0,.25,.5,1,2,5];
       else stops=[0,100000,300000,600000,1000000,2000000];
     }
@@ -385,8 +385,9 @@ function colorExpr(field, opt, type) {
 
 window.changeMapSymbolization = function(map, type, field) {
   mapSymbolization[type] = field;
-  const opt = SYMBOLIZATION_OPTIONS.find(o => o.value===field);
-  if (opt && opt.type==='categorical' && !opt.colors) opt.colors = generateCategoricalColors(getUniqueValuesForField(type,field));
+  let opt = SYMBOLIZATION_OPTIONS.find(o => o.value === field);
+  if (!opt) opt = { value: field, type: 'categorical' };
+  if (opt.type === 'categorical' && !opt.colors) opt.colors = generateCategoricalColors(getUniqueValuesForField(type, field));
   if (map.getLayer('parcels-fill')) map.setPaintProperty('parcels-fill','fill-color',colorExpr(field,opt,type));
   buildLegend(field, opt, type);
 };
@@ -421,9 +422,9 @@ function buildLegend(field, opt, type) {
       const dataField= fieldMap[field]||field;
       const counts={};
       parcels.forEach(p=>{ const v=p[dataField]; if(v&&v!=='Unknown') counts[v]=(counts[v]||0)+1; });
-      entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count).slice(0,10)
+      entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count)
         .forEach(({val,color})=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
-      if (entries.length>10) { const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<span style="color:var(--ink-3);font-style:italic">...and ${entries.length-10} more</span>`; el.appendChild(item); }
+      if (entries.length>100) { const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<span style="color:var(--ink-3);font-style:italic">...and ${entries.length-10} more</span>`; el.appendChild(item); }
     } else {
       entries.forEach(([val,color])=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
     }
@@ -433,7 +434,7 @@ function buildLegend(field, opt, type) {
     ramp.forEach(color=>{ const seg=document.createElement('div'); seg.className='legend-ramp-seg'; seg.style.background=color; rampDiv.appendChild(seg); });
     el.appendChild(rampDiv);
     const parcels=parcelData[type]||[]; let labels;
-    if (opt.value.includes('Year')) {
+    if (opt.value.includes('Year Built')) {
       const years=parcels.map(p=>p.yearBuilt).filter(y=>y>0);
       labels=years.length?[Math.min(...years).toString(),Math.max(...years).toString()]:['1900','2020'];
     } else if (opt.value==='Land Acres') {
@@ -673,12 +674,15 @@ function renderBarInto(container, data, color) {
   d3.select(container).selectAll('*').remove();
   if (!data.length) return;
   const width  = container.clientWidth  || 280;
-  const height = container.clientHeight || 160;
+  
+  // Calculate SVG height based on number of bars
+  const barHeight = 24;
+  const svgHeight = Math.max(160, data.length * barHeight + 60);
+  
   const fs = Math.max(9, Math.min(13, width / 22));
-  // Right margin wide enough for mean label e.g. "$312K"
-  const margin = { top:6, right:Math.round(fs*5.5), bottom:Math.round(fs*2.8), left:Math.round(Math.min(width*0.4, fs*12)) };
+  const margin = { top:6, right:Math.round(fs*5.5), bottom:Math.round(fs*5.5), left:Math.round(Math.min(width*0.4, fs*12)) };
   const iW = Math.max(width  - margin.left - margin.right, 30);
-  const iH = Math.max(height - margin.top  - margin.bottom, 30);
+  const iH = Math.max(svgHeight - margin.top - margin.bottom, 30);
 
   const fmtVal = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
 
@@ -689,7 +693,7 @@ function renderBarInto(container, data, color) {
   const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/50))).tickFormat(fmtAxis);
   const yAxis = d3.axisLeft(yScale).tickSize(0);
 
-  const svg = d3.select(container).append('svg').attr('width',width).attr('height',height);
+  const svg = d3.select(container).append('svg').attr('width',width).attr('height',svgHeight);
   const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
 
   const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
@@ -775,7 +779,7 @@ function updateResStyleMeanChart(parcels) {
     grouped[p.style].count += 1;
   });
   const data = Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.residential));
 }
@@ -789,7 +793,7 @@ function updateCondoNeighborhoodChart(parcels) {
     grouped[p.neighborhood].sum+=p.assessed2022; grouped[p.neighborhood].count+=1;
   }});
   const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
 }
@@ -804,7 +808,7 @@ function updateStateUseChart(type, parcels) {
     grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
   }});
   const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS[type]));
 }
@@ -818,7 +822,7 @@ function updateCommercialZoneChart(parcels) {
     grouped[p.zone].sum+=p.assessed2022; grouped[p.zone].count+=1;
   }});
   const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,10);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
 }
@@ -834,7 +838,7 @@ function updateCommercialStyleChart(parcels) {
   });
   const data = Object.entries(grouped)
     .map(([label, { sum, count }]) => ({ label, count, mean: sum / count }))
-    .sort((a, b) => b.mean - a.mean).slice(0, 8);
+    .sort((a, b) => b.mean - a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
 }
@@ -847,7 +851,7 @@ function updateCommercialUseChart(parcels) {
     grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
   }});
   const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
 }
@@ -861,7 +865,7 @@ function updateVacantUseChart(parcels) {
     grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
   }});
   const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+    .sort((a,b)=>b.mean-a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.vacant));
 }
