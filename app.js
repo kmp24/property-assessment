@@ -1,1545 +1,969 @@
-// Property Assessment Dashboard - MapLibre GL JS Version
-// With dynamic data aggregation and chart population
+// ═══════════════════════════════════════════════════════════════════════════
+// ASSESSOR'S ATLAS - D3 INTERACTIVE CHARTS VERSION
+// All charts support zoom and pan with responsive font sizing
+// ═══════════════════════════════════════════════════════════════════════════
+'use strict';
 
+console.log('🚀 Assessor\'s Atlas - D3 Interactive Version');
+
+// ───────────────────────────────────────────────────────────────────────────
+// STATE
+// ───────────────────────────────────────────────────────────────────────────
 let residentialMap, condoMap, commercialMap, vacantMap;
 let parcelData = { residential: [], condo: [], commercial: [], vacant: [] };
 let statsData = { residential: {}, condo: {}, commercial: {}, vacant: {} };
 let dataCollected = { residential: false, condo: false, commercial: false, vacant: false };
+let charts = {};
+let activeTab = 'residential';
+let scatterPending = { residential: false, condo: false, commercial: false, vacant: false };
+let collectionDone = false;
+
+let sidebarState = {
+  residential: { left: false, right: false },
+  condo: { left: false, right: false },
+  commercial: { left: false, right: false },
+  vacant: { left: false, right: false }
+};
+
+let showAllParcels = {
+  residential: false,
+  condo: false,
+  commercial: false,
+  vacant: false
+};
+
+const scatterAxes = {
+  residential: { x: 'sqft', y: 'assessed2022' },
+  condo: { x: 'sqft', y: 'assessed2022' },
+  commercial: { x: 'sqft', y: 'assessed2022' },
+  vacant: { x: 'acreage', y: 'assessed2022' },
+};
+
+const STAT_PREFIX = {
+  residential: 'res',
+  condo: 'condo',
+  commercial: 'commercial',
+  vacant: 'vacant'
+};
 
 const COLORS = {
-    residential: '#e55d75',
-    condo:       '#f59e0b',
-    commercial:  '#6b8cae',
-    vacant:      '#10b981'
+  residential: '#EE7733',
+  condo: '#0077BB',
+  commercial: '#33BBEE',
+  vacant: '#009988'
 };
 
-// ─── Startup ──────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
-    console.log('DOM loaded, waiting for libraries...');
-    showLoading('Loading map libraries...');
-    
-    try {
-        // Wait for libraries with longer timeout for slow connections
-        const librariesLoaded = await waitForLibraries(30000); // 30 second timeout
-        
-        if (!librariesLoaded) {
-            throw new Error('Libraries took too long to load. This might be due to a slow internet connection or CDN issues. Please try:\n1. Refreshing the page\n2. Checking your internet connection\n3. Trying again in a few minutes');
-        }
-        
-        console.log('✓ Libraries loaded');
-        showLoading('Initializing maps...');
-        await initializeMaps();
-        
-    } catch (err) {
-        console.error('Startup error:', err);
-        showError(`Startup failed: ${err.message}`);
-    }
-});
-
-function waitForLibraries(timeout = 10000) {
-    return new Promise((resolve) => {
-        const startTime = Date.now();
-        const loadingMsg = document.getElementById('loading-message');
-        
-        const checkLibraries = () => {
-            const elapsed = Date.now() - startTime;
-            
-            // Check if libraries are loaded
-            if (typeof maplibregl !== 'undefined' && typeof pmtiles !== 'undefined') {
-                console.log('✓ MapLibre and PMTiles loaded');
-                if (loadingMsg) loadingMsg.textContent = 'Libraries loaded!';
-                resolve(true);
-                return;
-            }
-            
-            // Check for timeout
-            if (elapsed > timeout) {
-                console.error('Timeout waiting for libraries');
-                if (loadingMsg) loadingMsg.textContent = 'Loading timed out. Please refresh.';
-                resolve(false);
-                return;
-            }
-            
-            // Update progress message
-            const missing = [];
-            if (typeof maplibregl === 'undefined') missing.push('MapLibre GL JS');
-            if (typeof pmtiles === 'undefined') missing.push('PMTiles');
-            
-            if (loadingMsg && missing.length > 0) {
-                const seconds = Math.round(elapsed / 1000);
-                loadingMsg.textContent = `Loading ${missing.join(' & ')}... (${seconds}s)`;
-            }
-            
-            // Log every 2 seconds
-            if (missing.length > 0 && elapsed % 2000 < 100) {
-                console.log(`Still waiting for: ${missing.join(', ')}...`);
-            }
-            
-            // Check again
-            setTimeout(checkLibraries, 100);
-        };
-        
-        checkLibraries();
-    });
-}
-
-// ─── Maps ─────────────────────────────────────────────────────────────────────
-async function initializeMaps() {
-    try {
-        const center = [-72.75, 41.76];
-        const zoom = 13;
-
-        // Create maps
-        residentialMap = createBasicMap('residentialMap', center, zoom);
-        condoMap       = createBasicMap('condoMap', center, zoom);
-        commercialMap  = createBasicMap('commercialMap', center, zoom);
-        vacantMap      = createBasicMap('vacantMap', center, zoom);
-
-        console.log('✓ Base maps created');
-        
-        // Try to load PMTiles
-        showLoading('Loading parcel data...');
-        
-        try {
-            await loadPMTiles();
-            console.log('✓ PMTiles loaded');
-        } catch (pmErr) {
-            console.warn('PMTiles error:', pmErr.message);
-            showPMTilesError(pmErr.message);
-        }
-        
-        hideLoading();
-        console.log('✓ Initialization complete');
-        
-    } catch (err) {
-        console.error('Error initializing maps:', err);
-        showError(`Failed to load maps: ${err.message}`);
-    }
-}
-
-function createBasicMap(containerId, center, zoom) {
-    const map = new maplibregl.Map({
-        container: containerId,
-        style: {
-            version: 8,
-            sources: {
-                'osm': {
-                    type: 'raster',
-                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-                    tileSize: 256,
-                    attribution: '© OpenStreetMap contributors'
-                }
-            },
-            layers: [{
-                id: 'osm',
-                type: 'raster',
-                source: 'osm',
-                paint: {
-                    'raster-opacity': 0.8
-                }
-            }]
-        },
-        center: center,
-        zoom: zoom,
-        fadeDuration: 0  // Disable fade to speed up rendering
-    });
-
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    
-    // Add error handling
-    map.on('error', (e) => {
-        console.warn(`Map error in ${containerId}:`, e.error);
-    });
-    
-    // Force load event after timeout if it doesn't fire
-    setTimeout(() => {
-        if (!map.loaded()) {
-            console.log(`Forcing load event for ${containerId}`);
-            map.fire('load');
-        }
-    }, 3000);
-    
-    return map;
-}
-
-async function loadPMTiles() {
-    try {
-        // Check if file exists
-        console.log('Checking for parcels.pmtiles...');
-        const response = await fetch('parcels.pmtiles', { method: 'HEAD' });
-        
-        if (!response.ok) {
-            throw new Error(`parcels.pmtiles not found (HTTP ${response.status}). Please place parcels.pmtiles in the same folder as index.html`);
-        }
-        
-        console.log('parcels.pmtiles found, setting up protocol...');
-        
-        // Set up PMTiles protocol
-        // Note: Browser cache errors are normal on GitHub Pages and can be ignored
-        const protocol = new pmtiles.Protocol();
-        maplibregl.addProtocol('pmtiles', protocol.tile);
-        
-        console.log('Protocol configured, adding layers...');
-        
-        // Add layers to each map - they'll load data as needed
-        await Promise.all([
-            addPMTilesLayer(residentialMap, 'residential'),
-            addPMTilesLayer(condoMap, 'condo'),
-            addPMTilesLayer(commercialMap, 'commercial'),
-            addPMTilesLayer(vacantMap, 'vacant')
-        ]);
-        
-        console.log('✓ Layers added successfully');
-        
-    } catch (err) {
-        console.error('PMTiles loading failed:', err);
-        throw err;
-    }
-}
-
-// Remove the problematic loadParcelData function - we don't need it
-// Data will be collected when features render on the map
-
-function addPMTilesLayer(map, propertyType) {
-    return new Promise((resolve) => {
-        const color = COLORS[propertyType];
-        
-        // Store property type on map for legend filtering
-        map._propertyType = propertyType;
-        
-        const addLayers = () => {
-            console.log(`Adding layer for ${propertyType}...`);
-            
-            try {
-                // Check if source already exists
-                if (map.getSource('parcels')) {
-                    console.log(`Source already exists for ${propertyType}, skipping...`);
-                    resolve();
-                    return;
-                }
-                
-                // Add PMTiles source
-                map.addSource('parcels', {
-                    type: 'vector',
-                    url: 'pmtiles://./parcels.pmtiles'
-                });
-
-                // Get current symbolization
-                const currentSymbol = mapSymbolization[propertyType] || 'Zone';
-                const symbolOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === currentSymbol);
-                const fillColorExpression = createColorExpression(currentSymbol, symbolOption);
-
-                // Add fill layer with dynamic coloring
-                map.addLayer({
-                    id: 'parcels-fill',
-                    type: 'fill',
-                    source: 'parcels',
-                    'source-layer': 'parcels',
-                    paint: {
-                        'fill-color': fillColorExpression,
-                        'fill-opacity': 0.6
-                    },
-                    filter: createPropertyFilter(propertyType)
-                });
-
-                // Add outline layer
-                map.addLayer({
-                    id: 'parcels-outline',
-                    type: 'line',
-                    source: 'parcels',
-                    'source-layer': 'parcels',
-                    paint: {
-                        'line-color': '#ffffff',
-                        'line-width': 0.5
-                    },
-                    filter: createPropertyFilter(propertyType)
-                });
-
-                // Add legend to the map (get containerId from map's container)
-                const containerId = map.getContainer().id;
-                addMapLegend(map, containerId);
-
-                // Collect data when features are rendered
-                map.on('data', (e) => {
-                    if (e.sourceId === 'parcels' && e.isSourceLoaded) {
-                        collectParcelData(map, propertyType);
-                    }
-                });
-                
-                // Also try collecting after a delay (backup)
-                setTimeout(() => {
-                    if (!dataCollected[propertyType]) {
-                        console.log(`Retry collecting data for ${propertyType}...`);
-                        collectParcelData(map, propertyType);
-                    }
-                }, 2000);
-
-                // Add click handler
-                map.on('click', 'parcels-fill', (e) => {
-                    if (e.features && e.features.length > 0) {
-                        const props = e.features[0].properties;
-                        showPopup(map, e.lngLat, props, color, propertyType);
-                    }
-                });
-
-                // Change cursor on hover
-                map.on('mouseenter', 'parcels-fill', () => {
-                    map.getCanvas().style.cursor = 'pointer';
-                });
-
-                map.on('mouseleave', 'parcels-fill', () => {
-                    map.getCanvas().style.cursor = '';
-                });
-                
-                console.log(`✓ ${propertyType} layer added`);
-                resolve();
-                
-            } catch (err) {
-                console.error(`Error adding ${propertyType} layer:`, err);
-                resolve();
-            }
-        };
-        
-        // Try multiple times to add layers
-        const tryAddLayers = () => {
-            if (map.loaded()) {
-                console.log(`Map loaded for ${propertyType}, adding layers immediately`);
-                addLayers();
-            } else if (map.isStyleLoaded && map.isStyleLoaded()) {
-                console.log(`Style loaded for ${propertyType}, adding layers now`);
-                addLayers();
-            } else {
-                console.log(`Waiting for ${propertyType} map to load...`);
-                // Try on both 'load' and 'style.load' events
-                const onLoad = () => {
-                    map.off('load', onLoad);
-                    map.off('style.load', onLoad);
-                    addLayers();
-                };
-                map.once('load', onLoad);
-                map.once('style.load', onLoad);
-                
-                // Timeout fallback - force it after 5 seconds
-                setTimeout(() => {
-                    if (!map.getSource('parcels')) {
-                        console.log(`Timeout for ${propertyType}, forcing layer add...`);
-                        map.off('load', onLoad);
-                        map.off('style.load', onLoad);
-                        addLayers();
-                    }
-                }, 5000);
-            }
-        };
-        
-        tryAddLayers();
-    });
-}
-
-function createPropertyFilter(propertyType) {
-    return ['all'];
-    // Filter by Property Type field to show only relevant parcels on each tab
-    //const typeMap = {
-    //    residential: ['Residential', 'RESIDENTIAL', 'Single Family', 'SINGLE FAMILY', 'Res', 'RES'],
-    //    condo: ['Condominium', 'CONDOMINIUM', 'Condo', 'CONDO', 'Townhouse', 'TOWNHOUSE'],
-    //    commercial: ['Commercial', 'COMMERCIAL', 'Business', 'BUSINESS', 'Industrial', 'INDUSTRIAL', 'Comm', 'COMM'],
-    //    vacant: ['Vacant Land', 'VACANT LAND', 'Vacant', 'VACANT', 'Land', 'LAND']
-    //};
-    
-    //const matches = typeMap[propertyType] || [];
-    
-    // Create filter that matches any of the property type variations
-    //if (matches.length === 0) return ['all'];
-    
-    //return ['any', ...matches.map(match => ['==', ['get', 'Property Type'], match])];
-}
-
-// Get unique zones from data for color mapping
 const ZONE_COLORS = {
-    'R-13': '#3b82f6',   // Blue
-    'R-20': '#10b981',   // Green  
-    'R-40': '#f59e0b',   // Orange
-    'R-80': '#ef4444',   // Red
-    'B': '#8b5cf6',      // Purple - Business
-    'I': '#64748b',      // Gray - Industrial
-    'default': '#a73097' // Light gray - Unknown
+  'R-13': '#EE7733', 'R-20': '#0077BB', 'R-40': '#CC3311',
+  'R-80': '#009988', 'B': '#EE3377', 'I': '#BBBBBB', 'default': '#33BBEE'
 };
 
-// Color schemes for different property types
-const PROPERTY_TYPE_COLORS = {
-    'Residential': '#3b82f6',
-    'Condominium': '#f59e0b',
-    'Commercial': '#8b5cf6',
-    'Vacant Land': '#10b981',
-    'default': '#94a3b8'
+const PROP_TYPE_COLORS = {
+  'Residential': '#EE7733', 'Condo': '#0077BB', 'Commercial': '#33BBEE',
+  'Vacant': '#009988', 'default': '#BBBBBB'
 };
 
-// Color ramps for continuous values (assessment values, year built, etc.)
-const VALUE_COLOR_RAMP = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
-const YEAR_COLOR_RAMP = ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
-
-// Available symbolization options
-const SYMBOLIZATION_OPTIONS = [
-    { value: 'Zone', label: 'Zone', type: 'categorical', colors: ZONE_COLORS },
-    { value: 'Property Type', label: 'Property Type', type: 'categorical', colors: PROPERTY_TYPE_COLORS },
-    { value: 'Assessed Total', label: '2025 Assessment Value', type: 'continuous', colorRamp: VALUE_COLOR_RAMP },
-    { value: 'Pre Year Assessed Total', label: '2020 Assessment Value', type: 'continuous', colorRamp: VALUE_COLOR_RAMP },
-    { value: 'Effective Year Built', label: 'Year Built', type: 'continuous', colorRamp: YEAR_COLOR_RAMP },
-    { value: 'State Use Description', label: 'State Use', type: 'categorical' },
-    { value: 'Neighborhood', label: 'Neighborhood', type: 'categorical' },
-    { value: 'Style Description', label: 'Building Style', type: 'categorical' }
+const CATEGORICAL_PALETTE = [
+  '#EE7733','#0077BB','#33BBEE','#EE3377','#CC3311','#009988',
+  '#BBBBBB','#AA3377','#228833','#CCBB44','#AA7744','#4477AA',
 ];
 
-// Track current symbolization for each map
-const mapSymbolization = {
-    residential: 'Zone',
-    condo: 'Zone',
-    commercial: 'Zone',
-    vacant: 'Zone'
+const VALUE_RAMP   = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
+const YEAR_RAMP    = ['#f0f0f0','#bdc9e1','#74a9cf','#2b8cbe','#045a8d'];
+const ACREAGE_RAMP = ['#edf8fb','#b3cde3','#8c96c6','#8856a7','#810f7c'];
+
+const SYMBOLIZATION_OPTIONS = [
+  { value:'Zone',                    type:'categorical', colors:ZONE_COLORS },
+  { value:'Property Type',           type:'categorical', colors:PROP_TYPE_COLORS },
+  { value:'Assessed Total',          type:'continuous',  colorRamp:VALUE_RAMP },
+  { value:'Pre Year Assessed Total', type:'continuous',  colorRamp:VALUE_RAMP },
+  { value:'Effective Year Built',    type:'continuous',  colorRamp:YEAR_RAMP },
+  { value:'Neighborhood',            type:'categorical' },
+  { value:'Style Description',       type:'categorical' },
+  { value:'State Use Description',   type:'categorical' },
+  { value:'Land Acres',              type:'continuous',  colorRamp:ACREAGE_RAMP },
+];
+
+const mapSymbolization = { residential:'Zone', condo:'Zone', commercial:'Zone', vacant:'Zone' };
+
+const AXIS_LABELS = {
+  sqft:'Living Area', acreage:'Acreage (ac)', yearBuilt:'Year Built',
+  assessed2020:'2020 Assessment', assessed2022:'2022 Assessment'
 };
 
-function getZoneColor(zone) {
-    return ZONE_COLORS[zone] || ZONE_COLORS['default'];
+// ── Percentile helper for outlier clipping ──────────────────────────────
+function percentile(arr, p) {
+  if (!arr.length) return 0;
+  const sorted = arr.slice().sort((a,b) => a-b);
+  const idx = (p/100) * (sorted.length - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
-// Create color expression based on field and type
-function createColorExpression(field, symbolizationOption) {
-    if (!symbolizationOption) {
-        // Default to zone coloring
-        return createZoneColorExpression();
-    }
+// Global tooltip
+const tooltip = d3.select('body').append('div')
+  .attr('class', 'd3-tooltip')
+  .style('position','absolute')
+  .style('pointer-events','none');
 
-    if (symbolizationOption.type === 'categorical') {
-        // Use predefined colors if available, otherwise generate
-        const colors = symbolizationOption.colors || {};
-        const expression = ['match', ['get', field]];
-        
-        // Add known colors
-        Object.entries(colors).forEach(([value, color]) => {
-            if (value !== 'default') {
-                expression.push(value, color);
-            }
-        });
-        
-        // Default color
-        expression.push(colors['default'] || '#94a3b8');
-        
-        return expression;
-    } else if (symbolizationOption.type === 'continuous') {
-        // Continuous data (assessment values, years, etc.)
-        const colorRamp = symbolizationOption.colorRamp;
-        
-        // Create interpolation expression
-        const expression = [
-            'interpolate',
-            ['linear'],
-            ['to-number', ['get', field], 0]
-        ];
-        
-        // Add color stops based on field
-        if (field.includes('Assessed')) {
-            // Assessment value stops
-            expression.push(
-                0, colorRamp[0],
-                100000, colorRamp[1],
-                300000, colorRamp[2],
-                500000, colorRamp[3],
-                1000000, colorRamp[4]
-            );
-        } else if (field.includes('Year')) {
-            // Year built stops
-            expression.push(
-                1800, colorRamp[0],
-                1900, colorRamp[1],
-                1950, colorRamp[2],
-                1980, colorRamp[3],
-                2000, colorRamp[4],
-                2010, colorRamp[5],
-                2025, colorRamp[6]
-            );
-        } else {
-            // Generic continuous scale
-            expression.push(
-                0, colorRamp[0],
-                25, colorRamp[1],
-                50, colorRamp[2],
-                75, colorRamp[3],
-                100, colorRamp[4]
-            );
-        }
-        
-        return expression;
-    }
-    
-    // Fallback
-    return createZoneColorExpression();
-}
+// ───────────────────────────────────────────────────────────────────────────
+// STARTUP
+// ───────────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  showLoading('Loading libraries…');
+  try {
+    await waitForLibraries(20000);
+    showLoading('Initializing maps…');
+    await initializeMaps();
+  } catch (err) {
+    showError(err.message);
+    return;
+  }
+  document.getElementById('enter-btn').addEventListener('click', enterDashboard);
+});
 
-// Create zone-based color expression for map
-function createZoneColorExpression() {
-    const zoneKeys = Object.keys(ZONE_COLORS).filter(k => k !== 'default');
-    const expression = ['match', ['get', 'Zone']];
-    
-    zoneKeys.forEach(zone => {
-        expression.push(zone, ZONE_COLORS[zone]);
-    });
-    
-    expression.push(ZONE_COLORS['default']); // default color
-    
-    return expression;
-}
-
-// Add interactive legend to map with toggle functionality
-function addMapLegend(map, containerId) {
-    // Check if legend already exists
-    const existingLegend = document.querySelector(`#${containerId} .map-legend`);
-    if (existingLegend) {
-        existingLegend.remove();
-    }
-
-    // Get property type from container ID
-    const propertyType = containerId.replace('Map', '');
-
-    // Create symbolization dropdown
-    const dropdownContainer = document.createElement('div');
-    dropdownContainer.className = 'symbolization-dropdown';
-    dropdownContainer.style.cssText = `
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: white;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 12px;
-        z-index: 1;
-        padding: 8px 10px;
-    `;
-
-    const label = document.createElement('label');
-    label.textContent = 'Color by: ';
-    label.style.cssText = `
-        font-weight: 500;
-        color: #333;
-        margin-right: 6px;
-    `;
-
-    const select = document.createElement('select');
-    select.style.cssText = `
-        padding: 4px 8px;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        font-size: 12px;
-        cursor: pointer;
-        background: white;
-    `;
-
-    // Add options
-    SYMBOLIZATION_OPTIONS.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        if (opt.value === mapSymbolization[propertyType]) {
-            option.selected = true;
-        }
-        select.appendChild(option);
-    });
-
-    // Handle change
-    select.addEventListener('change', (e) => {
-        const newField = e.target.value;
-        changeMapSymbolization(map, propertyType, newField, containerId);
-    });
-
-    dropdownContainer.appendChild(label);
-    dropdownContainer.appendChild(select);
-
-    // Create legend container
-    const legend = document.createElement('div');
-    legend.className = 'map-legend';
-    legend.style.cssText = `
-        position: absolute;
-        bottom: 30px;
-        right: 10px;
-        background: white;
-        border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 12px;
-        z-index: 1;
-        max-width: 180px;
-        overflow: hidden;
-    `;
-
-    // Add header with collapse/expand button
-    const header = document.createElement('div');
-    header.style.cssText = `
-        padding: 10px 12px;
-        background: #f8f9fa;
-        border-bottom: 1px solid #e9ecef;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        cursor: pointer;
-        user-select: none;
-    `;
-
-    const title = document.createElement('div');
-    const currentField = mapSymbolization[propertyType] || 'Zone';
-    const currentOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === currentField);
-    title.textContent = currentOption ? currentOption.label : 'Legend';
-    title.style.cssText = `
-        font-weight: 600;
-        font-size: 13px;
-        color: #333;
-    `;
-
-    const toggleIcon = document.createElement('div');
-    toggleIcon.textContent = '▼';
-    toggleIcon.style.cssText = `
-        font-size: 10px;
-        color: #666;
-        transition: transform 0.2s;
-    `;
-
-    header.appendChild(title);
-    header.appendChild(toggleIcon);
-    legend.appendChild(header);
-
-    // Create content container
-    const content = document.createElement('div');
-    content.className = 'legend-content';
-    content.style.cssText = `
-        padding: 12px;
-        max-height: 300px;
-        overflow-y: auto;
-    `;
-
-    // Build legend based on symbolization type
-    if (currentOption && currentOption.type === 'categorical') {
-        buildCategoricalLegend(content, currentField, currentOption, map, propertyType);
-    } else if (currentOption && currentOption.type === 'continuous') {
-        buildContinuousLegend(content, currentField, currentOption);
-    } else {
-        // Default to zone legend
-        buildCategoricalLegend(content, 'Zone', SYMBOLIZATION_OPTIONS[0], map, propertyType);
-    }
-
-    legend.appendChild(content);
-
-    // Toggle expand/collapse
-    let isExpanded = true;
-    header.addEventListener('click', () => {
-        isExpanded = !isExpanded;
-        if (isExpanded) {
-            content.style.display = 'block';
-            toggleIcon.style.transform = 'rotate(0deg)';
-        } else {
-            content.style.display = 'none';
-            toggleIcon.style.transform = 'rotate(-90deg)';
-        }
-    });
-
-    // Add dropdown and legend to map container
-    const mapContainer = document.getElementById(containerId);
-    if (mapContainer) {
-        mapContainer.appendChild(dropdownContainer);
-        mapContainer.appendChild(legend);
-    }
-}
-
-// Change map symbolization
-function changeMapSymbolization(map, propertyType, field, containerId) {
-    // Update tracking
-    mapSymbolization[propertyType] = field;
-    
-    // Get symbolization option
-    const symbolOption = SYMBOLIZATION_OPTIONS.find(opt => opt.value === field);
-    if (!symbolOption) return;
-    
-    // Create new color expression
-    const newColorExpression = createColorExpression(field, symbolOption);
-    
-    // Update map paint property
-    if (map.getLayer('parcels-fill')) {
-        map.setPaintProperty('parcels-fill', 'fill-color', newColorExpression);
-    }
-    
-    // Rebuild legend
-    addMapLegend(map, containerId);
-}
-
-// Build categorical legend (zones, property types, etc.)
-function buildCategoricalLegend(content, field, symbolOption, map, propertyType) {
-    const colors = symbolOption.colors || {};
-    
-    // Get categories dynamically from colors
-    const categories = Object.entries(colors)
-        .filter(([key]) => key !== 'default')
-        .map(([value, color]) => ({
-            value,
-            color,
-            label: value === 'B' ? 'Business' : value === 'I' ? 'Industrial' : value
-        }));
-    
-    // Add 'Other' at the end
-    if (colors['default']) {
-        categories.push({ value: 'default', color: colors['default'], label: 'Other' });
-    }
-
-    // Track visibility state
-    const visibility = {};
-
-    categories.forEach(({ value, color, label }) => {
-        visibility[value] = true;
-
-        const item = document.createElement('div');
-        item.style.cssText = `
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 3px;
-            transition: background 0.15s;
-        `;
-
-        item.addEventListener('mouseenter', () => item.style.background = '#f8f9fa');
-        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = true;
-        checkbox.style.cssText = 'margin-right: 8px; cursor: pointer;';
-
-        const colorBox = document.createElement('div');
-        colorBox.style.cssText = `
-            width: 20px;
-            height: 14px;
-            background: ${color};
-            margin-right: 8px;
-            border-radius: 2px;
-            border: 1px solid rgba(0,0,0,0.1);
-            flex-shrink: 0;
-        `;
-
-        const labelText = document.createElement('span');
-        labelText.textContent = label;
-        labelText.style.cssText = 'color: #666; font-size: 12px; flex: 1;';
-
-        const toggleItem = () => {
-            visibility[value] = !visibility[value];
-            checkbox.checked = visibility[value];
-            
-            if (!visibility[value]) {
-                colorBox.style.opacity = '0.3';
-                labelText.style.opacity = '0.5';
-            } else {
-                colorBox.style.opacity = '1';
-                labelText.style.opacity = '1';
-            }
-            
-            updateCategoricalMapFilter(map, field, visibility, propertyType);
-        };
-
-        checkbox.addEventListener('change', toggleItem);
-        item.addEventListener('click', (e) => {
-            if (e.target !== checkbox) toggleItem();
-        });
-
-        item.appendChild(checkbox);
-        item.appendChild(colorBox);
-        item.appendChild(labelText);
-        content.appendChild(item);
-    });
-}
-
-// Build continuous legend (gradients for values)
-function buildContinuousLegend(content, field, symbolOption) {
-    const colorRamp = symbolOption.colorRamp;
-    
-    const gradientBar = document.createElement('div');
-    gradientBar.style.cssText = `
-        width: 100%;
-        height: 20px;
-        background: linear-gradient(to right, ${colorRamp.join(', ')});
-        border-radius: 3px;
-        margin-bottom: 8px;
-        border: 1px solid rgba(0,0,0,0.1);
-    `;
-    content.appendChild(gradientBar);
-    
-    const labelsContainer = document.createElement('div');
-    labelsContainer.style.cssText = `
-        display: flex;
-        justify-content: space-between;
-        font-size: 10px;
-        color: #666;
-    `;
-    
-    let minLabel, maxLabel;
-    if (field.includes('Assessed')) {
-        minLabel = '$0';
-        maxLabel = '$1M+';
-    } else if (field.includes('Year')) {
-        minLabel = '1800';
-        maxLabel = '2025';
-    } else {
-        minLabel = 'Low';
-        maxLabel = 'High';
-    }
-    
-    const minSpan = document.createElement('span');
-    minSpan.textContent = minLabel;
-    const maxSpan = document.createElement('span');
-    maxSpan.textContent = maxLabel;
-    
-    labelsContainer.appendChild(minSpan);
-    labelsContainer.appendChild(maxSpan);
-    content.appendChild(labelsContainer);
-}
-
-// Update map filter for categorical fields
-function updateCategoricalMapFilter(map, field, visibility, propertyType) {
-    const visibleValues = Object.entries(visibility)
-        .filter(([value, visible]) => visible && value !== 'default')
-        .map(([value]) => value);
-    
-    let categoryFilter;
-    if (visibleValues.length === 0) {
-        categoryFilter = ['==', ['get', field], 'NONE'];
-    } else {
-        categoryFilter = ['any', 
-            ...visibleValues.map(value => ['==', ['get', field], value])
-        ];
-        
-        if (visibility['default']) {
-            const knownValues = Object.keys(visibility).filter(v => v !== 'default');
-            categoryFilter = ['any',
-                ...visibleValues.map(value => ['==', ['get', field], value]),
-                ['!', ['in', ['get', field], ['literal', knownValues]]]
-            ];
-        }
-    }
-    
-    const propertyTypeFilter = createPropertyFilter(propertyType);
-    const combinedFilter = propertyTypeFilter[0] === 'all' 
-        ? categoryFilter 
-        : ['all', propertyTypeFilter, categoryFilter];
-    
-    if (map.getLayer('parcels-fill')) {
-        map.setFilter('parcels-fill', combinedFilter);
-    }
-    if (map.getLayer('parcels-outline')) {
-        map.setFilter('parcels-outline', combinedFilter);
-    }
-}
-
-// Update map filter based on zone visibility
-function updateMapFilter(map, zoneVisibility) {
-    // Get visible zones
-    const visibleZones = Object.entries(zoneVisibility)
-        .filter(([zone, visible]) => visible && zone !== 'default')
-        .map(([zone]) => zone);
-    
-    // Build filter expression
-    let zoneFilter;
-    if (visibleZones.length === 0) {
-        // If no zones selected, show nothing
-        zoneFilter = ['==', ['get', 'Zone'], 'NONE'];
-    } else if (visibleZones.length === Object.keys(zoneVisibility).length - 1) {
-        // If all zones selected (except default), show all
-        zoneFilter = ['all'];
-    } else {
-        // Show only selected zones
-        zoneFilter = ['any', 
-            ...visibleZones.map(zone => ['==', ['get', 'Zone'], zone])
-        ];
-        
-        // Include 'Other' if selected
-        if (zoneVisibility['default']) {
-            const knownZones = Object.keys(ZONE_COLORS).filter(z => z !== 'default');
-            zoneFilter = ['any',
-                ...visibleZones.map(zone => ['==', ['get', 'Zone'], zone]),
-                ['!', ['in', ['get', 'Zone'], ['literal', knownZones]]]
-            ];
-        }
-    }
-    
-    // Combine with property type filter
-    const propertyTypeFilter = createPropertyFilter(map._propertyType || 'residential');
-    const combinedFilter = propertyTypeFilter[0] === 'all' 
-        ? zoneFilter 
-        : ['all', propertyTypeFilter, zoneFilter];
-    
-    // Update both layers
-    if (map.getLayer('parcels-fill')) {
-        map.setFilter('parcels-fill', combinedFilter);
-    }
-    if (map.getLayer('parcels-outline')) {
-        map.setFilter('parcels-outline', combinedFilter);
-    }
-}
-
-function collectParcelData(map, propertyType) {
-    // Only collect once per property type
-    if (dataCollected[propertyType]) return;
-    
-    const features = map.querySourceFeatures('parcels', {
-        sourceLayer: 'parcels'
-    });
-    
-    if (features.length === 0) {
-        console.log(`No features loaded yet for ${propertyType}, waiting...`);
-        return;
-    }
-    
-    console.log(`Collecting data for ${propertyType}: ${features.length} features found`);
-    
-    // DEBUG: Log unique property types in the data
-    if (propertyType === 'residential') {
-        const uniqueTypes = new Set();
-        features.slice(0, 100).forEach(f => {
-            if (f.properties['Property Type']) {
-                uniqueTypes.add(f.properties['Property Type']);
-            }
-        });
-        console.log('Sample Property Type values in data:', Array.from(uniqueTypes));
-    }
-    
-    let total2020 = 0;
-    let total2025 = 0;
-    let count = 0;
-    const parcels = [];
-    
-    features.forEach(feature => {
-        const props = feature.properties;
-        
-        // Check if this parcel matches our property type
-        const propType = normalizePropertyType(props['Property Type']);
-        if (propType !== propertyType) return;
-        
-        const val2020 = parseFloat(props['Pre Year Assessed Total']) || 0;
-        const val2025 = parseFloat(props['Assessed Total']) || 0;
-        
-        if (val2025 > 0) {
-            total2020 += val2020;
-            total2025 += val2025;
-            count++;
-            
-            parcels.push({
-                address: props['Property Address'],
-                parcelId: props['Parcel ID'],
-                assessed2020: val2020,
-                assessed2025: val2025,
-                acreage: parseFloat(props['Land Acres']) || 0,
-                style: props['Style Description'] || 'Unknown',
-                neighborhood: props['Neighborhood'] || 'Unknown',
-                zone: props['Zone'] || 'Unknown',
-                bedrooms: parseInt(props['Number of Bedroom']) || 0,
-                bathrooms: parseFloat(props['Number of Bathrooms']) || 0,
-                sqft: parseFloat(props['Gross Area of Primary Building']) || 0,
-                yearBuilt: parseInt(props['Effective Year Built']) || 0,
-                stateUse: props['State Use Description'] || 'Unknown',
-                frameType: props['Frame Type'] || 'Unknown'
-            });
-        }
-    });
-    
-    // Only mark as collected if we got a reasonable amount of data
-    if (count > 0) {
-        dataCollected[propertyType] = true;
-        
-        // Store the data
-        parcelData[propertyType] = parcels;
-        statsData[propertyType] = {
-            total2020,
-            total2025,
-            count,
-            avgChange: total2020 > 0 ? ((total2025 - total2020) / total2020 * 100).toFixed(1) : 0
-        };
-        
-        console.log(`✓ ${propertyType} data collected:`, {
-            count,
-            total2020: `$${total2020.toLocaleString()}`,
-            total2025: `$${total2025.toLocaleString()}`
-        });
-        
-        // Update UI
-        updateStatsUI();
-        updateChartsForType(propertyType);
-    }
-}
-
-function normalizePropertyType(type) {
-    if (!type) return 'residential';
-    const s = type.toString().toUpperCase();
-    if (s.includes('RES') || s.includes('SINGLE') || s.includes('FAMILY')) return 'residential';
-    if (s.includes('CONDO') || s.includes('TOWN')) return 'condo';
-    if (s.includes('COMM') || s.includes('BUS') || s.includes('IND')) return 'commercial';
-    if (s.includes('VAC') || s.includes('LAND')) return 'vacant';
-    return 'residential';
-}
-
-// Color helpers
-function lightenColor(hex, percent) {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const amt = Math.round(2.55 * percent * 100);
-    const R = (num >> 16) + amt;
-    const G = (num >> 8 & 0x00FF) + amt;
-    const B = (num & 0x0000FF) + amt;
-    return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
-        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
-        (B < 255 ? B < 1 ? 0 : B : 255))
-        .toString(16).slice(1);
-}
-
-function darkenColor(hex, percent) {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const amt = Math.round(2.55 * percent * 100);
-    const R = (num >> 16) - amt;
-    const G = (num >> 8 & 0x00FF) - amt;
-    const B = (num & 0x0000FF) - amt;
-    return '#' + (0x1000000 + (R > 0 ? R : 0) * 0x10000 +
-        (G > 0 ? G : 0) * 0x100 +
-        (B > 0 ? B : 0))
-        .toString(16).slice(1);
-}
-
-function showPopup(map, lngLat, props, color, propertyType) {
-    const assessment2020 = parseFloat(props['Pre Year Assessed Total']) || 0;
-    const assessment2025 = parseFloat(props['Assessed Total']) || 0;
-    const pct = assessment2020 > 0 
-        ? ((assessment2025 - assessment2020) / assessment2020 * 100).toFixed(1)
-        : '–';
-    const pctColor = parseFloat(pct) > 0 ? '#16a34a' : '#dc2626';
-    
-    // Additional property details
-    const style = props['Style Description'] || '–';
-    const bedrooms = props['Number of Bedroom'] || '–';
-    const bathrooms = props['Number of Bathrooms'] || '–';
-    const sqft = props['Gross Area of Primary Building'] ? parseFloat(props['Gross Area of Primary Building']).toLocaleString() : '–';
-    const yearBuilt = props['Effective Year Built'] || '–';
-    const acres = props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2) : '–';
-
-    new maplibregl.Popup()
-        .setLngLat(lngLat)
-        .setHTML(`
-            <div style="min-width:240px;font-size:13px;font-family:sans-serif;">
-                <div style="font-weight:700;margin-bottom:6px;">
-                    ${props['Property Address'] || 'Unknown'}
-                </div>
-                <div style="color:${color};font-weight:600;font-size:11px;
-                     text-transform:uppercase;margin-bottom:8px;">
-                    ${propertyType} • Parcel ${props['Parcel ID'] || ''}
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:12px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee;">
-                    <div><span style="color:#666;">Style:</span> ${style}</div>
-                    <div><span style="color:#666;">Built:</span> ${yearBuilt}</div>
-                    <div><span style="color:#666;">Beds:</span> ${bedrooms}</div>
-                    <div><span style="color:#666;">Baths:</span> ${bathrooms}</div>
-                    <div><span style="color:#666;">Sq Ft:</span> ${sqft}</div>
-                    <div><span style="color:#666;">Acres:</span> ${acres}</div>
-                </div>
-                <table style="width:100%;border-collapse:collapse;">
-                    <tr><td style="color:#666;padding:2px 0;">2020</td>
-                        <td style="text-align:right;">$${assessment2020.toLocaleString()}</td></tr>
-                    <tr><td style="color:#666;padding:2px 0;">2025</td>
-                        <td style="text-align:right;font-weight:600;">$${assessment2025.toLocaleString()}</td></tr>
-                    <tr><td style="color:#666;padding:2px 0;">Change</td>
-                        <td style="text-align:right;font-weight:700;color:${pctColor};">
-                            ${parseFloat(pct) > 0 ? '+' : ''}${pct}%</td></tr>
-                </table>
-            </div>
-        `)
-        .addTo(map);
-}
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
-function updateStatsUI() {
-    console.log('Updating stats UI...');
-    
-    ['residential', 'condo', 'commercial', 'vacant'].forEach(type => {
-        const stats = statsData[type];
-        if (!stats || !stats.count || stats.count === 0) return;
-        
-        const tab = document.getElementById(`${type}-content`);
-        if (!tab) return;
-        
-        const cards = tab.querySelectorAll('.stat-value');
-        if (cards.length >= 3) {
-            const total2020 = stats.total2020 || 0;
-            const total2025 = stats.total2025 || 0;
-            const count = stats.count || 0;
-            
-            cards[0].textContent = '$' + Math.round(total2020).toLocaleString();
-            cards[1].textContent = '$' + Math.round(total2025).toLocaleString();
-            cards[2].textContent = count.toLocaleString();
-            
-            console.log(`✓ Updated ${type} stats: ${count} parcels`);
-        }
-    });
-}
-
-// ─── Charts ───────────────────────────────────────────────────────────────────
-let charts = {};
-
-function initializeCharts() {
-    console.log('Initializing charts...');
-    // Charts will be created when we have data
-}
-
-function updateChartsForType(propertyType) {
-    console.log(`Updating charts for ${propertyType}...`);
-    
-    const parcels = parcelData[propertyType];
-    if (!parcels || parcels.length === 0) return;
-    
-    if (propertyType === 'residential') {
-        updateResidentialCharts(parcels);
-    } else if (propertyType === 'condo') {
-        updateCondoCharts(parcels);
-    } else if (propertyType === 'commercial') {
-        updateCommercialCharts(parcels);
-    } else if (propertyType === 'vacant') {
-        updateVacantCharts(parcels);
-    }
-}
-
-function updateResidentialCharts(parcels) {
-    console.log(`🔄 Creating residential charts with ${parcels.length} parcels`);
-    
-    // Average Building Assessment by Design (residentialDesignChart exists in HTML)
-    const avgByStyle = {};
-    const countByStyle = {};
-    
-    parcels.forEach(p => {
-        if (p.style && p.style !== 'Unknown' && p.assessed2025 > 0) {
-            if (!avgByStyle[p.style]) {
-                avgByStyle[p.style] = 0;
-                countByStyle[p.style] = 0;
-            }
-            avgByStyle[p.style] += p.assessed2025;
-            countByStyle[p.style]++;
-        }
-    });
-    
-    Object.keys(avgByStyle).forEach(style => {
-        avgByStyle[style] = avgByStyle[style] / countByStyle[style];
-    });
-    
-    const topAvgStyles = Object.entries(avgByStyle)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    console.log(`Residential design chart data: ${topAvgStyles.length} styles`);
-    
-    createOrUpdateChart('residentialDesignChart', {
-        type: 'bar',
-        data: {
-            labels: topAvgStyles.map(s => s[0]),
-            datasets: [{
-                label: 'Average Assessment',
-                data: topAvgStyles.map(s => Math.round(s[1])),
-                backgroundColor: COLORS.residential
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { 
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => `$${context.parsed.x.toLocaleString()}`
-                    }
-                }
-            },
-            scales: {
-                x: { 
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => '$' + (value / 1000).toFixed(0) + 'K'
-                    }
-                }
-            }
-        }
-    });
-    
-    // Scatter plot (residentialScatter exists in HTML)
-    createScatterPlot('residentialScatter', parcels, 'acreage', 'assessed2025', 
-        'Acreage', 'Assessment Value', COLORS.residential);
-}
-
-function updateCondoCharts(parcels) {
-    // Average by Style (condoStyleChart exists)
-    const avgByStyle = {};
-    const countByStyle = {};
-    
-    parcels.forEach(p => {
-        if (p.style && p.style !== 'Unknown') {
-            if (!avgByStyle[p.style]) {
-                avgByStyle[p.style] = 0;
-                countByStyle[p.style] = 0;
-            }
-            avgByStyle[p.style] += p.assessed2025;
-            countByStyle[p.style]++;
-        }
-    });
-    
-    Object.keys(avgByStyle).forEach(style => {
-        avgByStyle[style] = avgByStyle[style] / countByStyle[style];
-    });
-    
-    const topStyles = Object.entries(avgByStyle)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8);
-    
-    createOrUpdateChart('condoStyleChart', {
-        type: 'bar',
-        data: {
-            labels: topStyles.map(s => s[0]),
-            datasets: [{
-                label: 'Average Value',
-                data: topStyles.map(s => Math.round(s[1])),
-                backgroundColor: COLORS.condo
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { 
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => `$${context.parsed.y.toLocaleString()}`
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => '$' + (value / 1000).toFixed(0) + 'K'
-                    }
-                }
-            }
-        }
-    });
-    
-    // Unit Location Distribution (condoLocationChart exists - using Neighborhood)
-    const locationCount = {};
-    parcels.forEach(p => {
-        if (p.neighborhood && p.neighborhood !== 'Unknown') {
-            locationCount[p.neighborhood] = (locationCount[p.neighborhood] || 0) + 1;
-        }
-    });
-    
-    const topLocations = Object.entries(locationCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8);
-    
-    createOrUpdateChart('condoLocationChart', {
-        type: 'doughnut',
-        data: {
-            labels: topLocations.map(l => l[0]),
-            datasets: [{
-                data: topLocations.map(l => l[1]),
-                backgroundColor: ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#fed7aa', '#ffedd5', '#fb923c', '#fdba74']
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-    
-    // Scatter plot (condoScatter exists)
-    createScatterPlot('condoScatter', parcels, 'sqft', 'assessed2025',
-        'Finished Area (Sq Ft)', 'Assessment Value', COLORS.condo);
-}
-
-function updateCommercialCharts(parcels) {
-    // Building Assessment by Class (using commercialClassChart)
-    // Group by Zone for class distribution
-    const zoneCount = {};
-    parcels.forEach(p => {
-        if (p.zone && p.zone !== 'Unknown') {
-            zoneCount[p.zone] = (zoneCount[p.zone] || 0) + 1;
-        }
-    });
-    
-    const topZones = Object.entries(zoneCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    createOrUpdateChart('commercialClassChart', {
-        type: 'bar',
-        data: {
-            labels: topZones.map(z => z[0]),
-            datasets: [{
-                label: 'Count',
-                data: topZones.map(z => z[1]),
-                backgroundColor: COLORS.commercial
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } }
-        }
-    });
-    
-    // Use Category Distribution (using commercialUseChart and State Use Description)
-    const useCount = {};
-    parcels.forEach(p => {
-        if (p.stateUse && p.stateUse !== 'Unknown') {
-            useCount[p.stateUse] = (useCount[p.stateUse] || 0) + 1;
-        }
-    });
-    
-    const topUses = Object.entries(useCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    createOrUpdateChart('commercialUseChart', {
-        type: 'bar',
-        data: {
-            labels: topUses.map(u => u[0]),
-            datasets: [{
-                label: 'Count',
-                data: topUses.map(u => u[1]),
-                backgroundColor: COLORS.commercial
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } }
-        }
-    });
-    
-    // Scatter - commercialScatter
-    createScatterPlot('commercialScatter', parcels, 'sqft', 'assessed2025',
-        'Building Area (Sq Ft)', 'Assessment', COLORS.commercial);
-}
-
-function updateVacantCharts(parcels) {
-    // Primary Use Distribution (vacantUseChart exists - using State Use Description)
-    const useCount = {};
-    parcels.forEach(p => {
-        if (p.stateUse && p.stateUse !== 'Unknown') {
-            useCount[p.stateUse] = (useCount[p.stateUse] || 0) + 1;
-        }
-    });
-    
-    const topUses = Object.entries(useCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    createOrUpdateChart('vacantUseChart', {
-        type: 'bar',
-        data: {
-            labels: topUses.map(u => u[0]),
-            datasets: [{
-                label: 'Count',
-                data: topUses.map(u => u[1]),
-                backgroundColor: COLORS.vacant
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } }
-        }
-    });
-    
-    // Assessment Value vs Acreage (vacantScatter exists)
-    createScatterPlot('vacantScatter', parcels, 'acreage', 'assessed2025',
-        'Acreage', 'Assessment Value', COLORS.vacant);
-}
-
-function createOrUpdateChart(canvasId, config) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-        console.warn(`❌ Canvas not found: ${canvasId}`);
-        return;
-    }
-    
-    console.log(`✓ Creating chart: ${canvasId}`);
-    
-    if (charts[canvasId]) {
-        charts[canvasId].destroy();
-    }
-    
-    try {
-        charts[canvasId] = new Chart(canvas, config);
-        console.log(`✓ Chart created successfully: ${canvasId}`);
-    } catch (error) {
-        console.error(`❌ Error creating chart ${canvasId}:`, error);
-    }
-}
-
-function createScatterPlot(canvasId, parcels, xField, yField, xLabel, yLabel, color) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-        console.warn(`❌ Canvas not found for scatter: ${canvasId}`);
-        return;
-    }
-    
-    // Filter out parcels with invalid/zero values
-    const data = parcels
-        .filter(p => p[xField] > 0 && p[yField] > 0)
-        .map(p => ({ x: p[xField], y: p[yField] }));
-    
-    console.log(`Creating scatter plot ${canvasId}: ${data.length} points from ${parcels.length} parcels`);
-    
-    if (data.length === 0) {
-        console.warn(`⚠️ No valid data for scatter plot: ${canvasId} (all values were 0 or negative)`);
-        return;
-    }
-    
-    if (charts[canvasId]) {
-        charts[canvasId].destroy();
-    }
-    
-    try {
-        charts[canvasId] = new Chart(canvas, {
-            type: 'scatter',
-            data: {
-                datasets: [{
-                    data: data,
-                    backgroundColor: color + '80',
-                    pointRadius: 3
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { 
-                        title: { display: true, text: xLabel },
-                        beginAtZero: true
-                    },
-                    y: { 
-                        title: { display: true, text: yLabel },
-                        beginAtZero: true,
-                        ticks: {
-                            callback: (value) => yField.includes('assessed') ? '$' + (value / 1000).toFixed(0) + 'K' : value
-                        }
-                    }
-                }
-            }
-        });
-        console.log(`✓ Scatter plot created: ${canvasId}`);
-    } catch (error) {
-        console.error(`❌ Error creating scatter plot ${canvasId}:`, error);
-    }
-}
-
-// ─── Tab Switching ────────────────────────────────────────────────────────────
-window.switchTab = function(event, tabName) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.currentTarget.classList.add('active');
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    const target = document.getElementById(`${tabName}-content`);
-    if (target) target.classList.add('active');
-    const maps = { 
-        residential: residentialMap, 
-        condo: condoMap,
-        commercial: commercialMap, 
-        vacant: vacantMap 
+function waitForLibraries(timeout) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      if (typeof maplibregl !== 'undefined' && typeof pmtiles !== 'undefined' && typeof d3 !== 'undefined') resolve();
+      else if (Date.now() - start > timeout) reject(new Error('Library loading timeout'));
+      else setTimeout(check, 100);
     };
-    setTimeout(() => { 
-        if (maps[tabName]) maps[tabName].resize(); 
-    }, 50);
+    check();
+  });
+}
+
+async function initializeMaps() {
+  let protocol;
+  try {
+    protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile);
+  } catch (err) { console.error('PMTiles protocol error:', err); }
+
+  const pmtilesUrl = 'pmtiles://parcels.pmtiles';
+  let pmtilesCenter = [-71.0589, 42.3601];
+  let pmtilesZoom = 12;
+  let sourceLayerName = 'parcels';
+
+  try {
+    const pmtilesFile = new pmtiles.PMTiles('parcels.pmtiles');
+    const header   = await pmtilesFile.getHeader();
+    const metadata = await pmtilesFile.getMetadata();
+    pmtilesCenter = [header.centerLon, header.centerLat];
+    pmtilesZoom   = Math.max(header.minZoom + 2, 12);
+    if (metadata?.vector_layers?.[0]) sourceLayerName = metadata.vector_layers[0].id;
+  } catch (err) { console.warn('Could not inspect PMTiles:', err.message); }
+
+  const baseStyle = {
+    version: 8,
+    sources: {
+      'carto-light': {
+        type:'raster',
+        tiles:[
+          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+        ],
+        tileSize:256, attribution:'© OpenStreetMap contributors, © CARTO'
+      },
+      parcels:{ type:'vector', url:pmtilesUrl, attribution:'© Property Assessment Data' }
+    },
+    layers:[{ id:'basemap', type:'raster', source:'carto-light', minzoom:0, maxzoom:22 }]
+  };
+
+  const mapConfig = { style:baseStyle, center:pmtilesCenter, zoom:pmtilesZoom, minZoom:10, maxZoom:18, attributionControl:true };
+
+  try {
+    residentialMap = new maplibregl.Map({ ...mapConfig, container:'residentialMap' });
+    condoMap       = new maplibregl.Map({ ...mapConfig, container:'condoMap' });
+    commercialMap  = new maplibregl.Map({ ...mapConfig, container:'commercialMap' });
+    vacantMap      = new maplibregl.Map({ ...mapConfig, container:'vacantMap' });
+
+    await Promise.all([
+      new Promise(r => residentialMap.once('load', r)),
+      new Promise(r => condoMap.once('load', r)),
+      new Promise(r => commercialMap.once('load', r)),
+      new Promise(r => vacantMap.once('load', r))
+    ]);
+
+    addMapLayers(residentialMap, sourceLayerName);
+    addMapLayers(condoMap,       sourceLayerName);
+    addMapLayers(commercialMap,  sourceLayerName);
+    addMapLayers(vacantMap,      sourceLayerName);
+
+    residentialMap.on('click','parcels-fill', e => showParcelDetail(e.features[0].properties,'residential'));
+    condoMap.on(      'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'condo'));
+    commercialMap.on( 'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'commercial'));
+    vacantMap.on(     'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'vacant'));
+
+    [residentialMap,condoMap,commercialMap,vacantMap].forEach(m => {
+      m.on('mouseenter','parcels-fill', () => m.getCanvas().style.cursor = 'pointer');
+      m.on('mouseleave','parcels-fill', () => m.getCanvas().style.cursor = '');
+    });
+
+    showLoading('Loading parcel data…');
+
+    await new Promise(resolve => {
+      let attempts = 0;
+      const checkData = () => {
+        attempts++;
+        const features = residentialMap.querySourceFeatures('parcels', { sourceLayer: sourceLayerName });
+        if (features && features.length > 0) { resolve(); }
+        else if (attempts < 10) { setTimeout(checkData, 1000); residentialMap.triggerRepaint(); }
+        else { console.warn('Timeout waiting for tiles'); resolve(); }
+      };
+      setTimeout(checkData, 1500);
+    });
+
+    await collectParcelData(sourceLayerName);
+    hideLoading();
+  } catch (err) {
+    if (err.message?.includes('404') || err.message?.includes('parcels.pmtiles')) showPMTilesError(err.message);
+    else showError(err.message);
+  }
+}
+
+function addMapLayers(map, sourceLayer = 'parcels') {
+  map.addLayer({ id:'parcels-fill', type:'fill', source:'parcels', 'source-layer':sourceLayer,
+    paint:{ 'fill-color': colorExpr('Zone', SYMBOLIZATION_OPTIONS.find(o => o.value==='Zone')), 'fill-opacity':0.7 }});
+  map.addLayer({ id:'parcels-outline', type:'line', source:'parcels', 'source-layer':sourceLayer,
+    paint:{ 'line-color':'#fff', 'line-width':1, 'line-opacity':0.4 }});
+}
+
+async function collectParcelData(sourceLayer = 'parcels') {
+  if (collectionDone) return;
+  const features = residentialMap.querySourceFeatures('parcels', { sourceLayer });
+  if (!features || features.length === 0) { showError('No features found in PMTiles file.'); return; }
+  console.log(`✓ Loaded ${features.length} features`);
+  collectionDone = true;
+
+  const buckets = { residential:[], condo:[], commercial:[], vacant:[] };
+  features.forEach(f => {
+    const pt = (f.properties['Property Type'] || '').trim();
+    if      (pt === 'Residential' || pt.includes('Residential'))           buckets.residential.push(f.properties);
+    else if (pt === 'Condo' || pt === 'Condominium')                        buckets.condo.push(f.properties);
+    else if (pt === 'Commercial')                                            buckets.commercial.push(f.properties);
+    else if (pt === 'Vacant' || pt === 'Vacant Land' || pt.includes('Vacant')) buckets.vacant.push(f.properties);
+  });
+
+  Object.entries(buckets).forEach(([type, props]) => {
+    if (!props.length) return;
+    const parcels = props.map(p => ({
+      parcelId:    p['Parcel ID'] || '',
+      address:     p['Property Address'] || 'Unknown',
+      owner:       p['Owner'] || '',
+      type:        p['Property Type'] || '',
+      neighborhood:p['Neighborhood'] || 'Unknown',
+      style:       p['Style Description'] || 'Unknown',
+      zone:        p['Zone'] || 'Unknown',
+      sqft:        parseFloat(p['Living Area']) || 0,
+      acreage:     parseFloat(p['Land Acres']) || 0,
+      bedrooms:    parseInt(p['Number of Bedroom']) || 0,
+      bathrooms:   parseFloat(p['Number of Bathrooms']) || 0,
+      yearBuilt:   parseInt(p['Effective Year Built']) || 0,
+      assessed2020:parseFloat(p['Pre Year Assessed Total']) || 0,
+      assessed2022:parseFloat(p['Assessed Total']) || 0,
+      stateUse:    p['State Use Description'] || 'Unknown',
+    }));
+    parcelData[type] = parcels;
+    dataCollected[type] = true;
+    const total2022 = parcels.reduce((s,p) => s + p.assessed2022, 0);
+    const total2020 = parcels.reduce((s,p) => s + p.assessed2020, 0);
+    statsData[type] = { count:parcels.length, total2022, total2020 };
+    updateStatsUI(type);
+    // Don't call updateChartsForType here — wait until dashboard is visible
+  });
+
+  setTimeout(() => {
+    if (activeTab && parcelData[activeTab]?.length) updateScatter(activeTab);
+    initializeSearch();
+  }, 1500);
+
+  updateLandingStats();
+}
+
+function updateStatsUI(type) {
+  const s = statsData[type];
+  if (!s || !s.count) return;
+  const p = STAT_PREFIX[type];
+  const fmt = v => v >= 1e9 ? `$${(v/1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+  const pct = s.total2020 > 0 ? ((s.total2022-s.total2020)/s.total2020*100).toFixed(1) : null;
+  const up  = pct !== null && parseFloat(pct) >= 0;
+  setText(p+'-total25', fmt(s.total2022));
+  setText(p+'-total20', fmt(s.total2020));
+  setText(p+'-count',   s.count.toLocaleString());
+  setText(p+'-avg',     fmt(s.total2022/s.count));
+  const deltaEl = document.getElementById(p+'-delta');
+  if (deltaEl && pct !== null) {
+    deltaEl.textContent = `${up?'▲':'▼'} ${Math.abs(pct)}% vs 2020`;
+    deltaEl.className = 'stat-delta ' + (up ? 'up' : 'down');
+  }
+}
+
+function updateLandingStats() {
+  const fmt = v => v >= 1e9 ? `$${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `$${(v/1e6).toFixed(0)}M` : '—';
+  const ids = { residential:'res', condo:'condo', commercial:'comm', vacant:'vac' };
+  ['residential','condo','commercial','vacant'].forEach(t => {
+    const s = statsData[t];
+    if (s && s.count) setText('ls-'+ids[t]+'-total', fmt(s.total2022));
+  });
+  const total = Object.values(statsData).reduce((a,s) => a+(s.count||0), 0);
+  if (total > 0) setText('ls-total-parcels', total.toLocaleString()+' parcels');
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function showParcelDetail(props, type) {
+  const p  = STAT_PREFIX[type];
+  const el = document.getElementById(p+'-detail');
+  if (!el) return;
+  const a25 = parseFloat(props['Assessed Total']) || 0;
+  const a20 = parseFloat(props['Pre Year Assessed Total']) || 0;
+  const pct = a20 > 0 ? ((a25-a20)/a20*100).toFixed(1) : null;
+  const up  = pct !== null && parseFloat(pct) >= 0;
+  const fmt = v => v > 0 ? '$'+Math.round(v).toLocaleString() : '—';
+  const rows = [
+    ['Owner',      props['Owner']],
+    ['Zone',       props['Zone']],
+    ['Neighborhood',props['Neighborhood']],
+    ['Style',      props['Style Description']],
+    ['Year Built', props['Effective Year Built']],
+    ['Living Area',props['Gross Area of Primary Building'] ? Math.round(parseFloat(props['Gross Area of Primary Building'])).toLocaleString()+' sf' : null],
+    ['Acres',      props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
+    ['Bedrooms',   props['Number of Bedroom']],
+    ['Bathrooms',  props['Number of Bathrooms']],
+    ['2022',       fmt(a25)],
+    ['2020',       fmt(a20)],
+  ].filter(([,v]) => v && v !== '0' && v !== '—');
+  el.innerHTML = `<div class="prop-detail">
+    <div class="prop-addr">${props['Property Address']||'Unknown'}</div>
+    ${pct!==null?`<div style="margin-bottom:.6rem"><span class="prop-change ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(pct)}%</span></div>`:''}
+    ${rows.map(([l,v])=>`<div class="prop-row"><span class="prop-row-label">${l}</span><span class="prop-row-value">${v}</span></div>`).join('')}
+  </div>`;
+}
+
+function colorExpr(field, opt, type) {
+  if (!opt) return '#94a3b8';
+  if (opt.type === 'categorical' && opt.colors) {
+    const cases = [];
+    Object.entries(opt.colors).forEach(([val,color]) => { if (val!=='default') cases.push(val,color); });
+    return ['match',['get',field],...cases, opt.colors.default||'#94a3b8'];
+  }
+  if (opt.type === 'continuous' && opt.colorRamp) {
+    const ramp = opt.colorRamp;
+    let stops = [];
+    if (type && parcelData[type]?.length) {
+      const parcels = parcelData[type];
+      if (field.includes('Year')) {
+        const years = parcels.map(p=>p.yearBuilt).filter(y=>y>0);
+        if (years.length) {
+          const min=Math.min(...years), max=Math.max(...years), step=(max-min)/5;
+          stops=[min]; for(let i=1;i<5;i++) stops.push(Math.floor(min+step*i)); stops.push(max);
+        } else stops=[1900,1940,1960,1980,2000,2020];
+      } else if (field==='Land Acres') {
+        const acres=parcels.map(p=>p.acreage).filter(a=>a>0);
+        if (acres.length) { const s=acres.sort((a,b)=>a-b); stops=[0,s[Math.floor(s.length*.2)],s[Math.floor(s.length*.4)],s[Math.floor(s.length*.6)],s[Math.floor(s.length*.8)],s[s.length-1]]; }
+        else stops=[0,.25,.5,1,2,5];
+      } else {
+        const vals=parcels.map(p=>p.assessed2022).filter(v=>v>0);
+        if (vals.length) { const s=vals.sort((a,b)=>a-b); stops=[0,s[Math.floor(s.length*.2)],s[Math.floor(s.length*.4)],s[Math.floor(s.length*.6)],s[Math.floor(s.length*.8)],s[s.length-1]]; }
+        else stops=[0,100000,300000,600000,1000000,2000000];
+      }
+    } else {
+      if (field.includes('Year')) stops=[1900,1940,1960,1980,2000,2020];
+      else if (field==='Land Acres') stops=[0,.25,.5,1,2,5];
+      else stops=[0,100000,300000,600000,1000000,2000000];
+    }
+    return ['interpolate',['linear'],['coalesce',['get',field],0],...stops.flatMap((s,i)=>[s,ramp[Math.min(i,ramp.length-1)]])];
+  }
+  return '#94a3b8';
+}
+
+window.changeMapSymbolization = function(map, type, field) {
+  mapSymbolization[type] = field;
+  const opt = SYMBOLIZATION_OPTIONS.find(o => o.value===field);
+  if (opt && opt.type==='categorical' && !opt.colors) opt.colors = generateCategoricalColors(getUniqueValuesForField(type,field));
+  if (map.getLayer('parcels-fill')) map.setPaintProperty('parcels-fill','fill-color',colorExpr(field,opt,type));
+  buildLegend(field, opt, type);
 };
 
-// ─── UI ───────────────────────────────────────────────────────────────────────
+function getUniqueValuesForField(type, field) {
+  const parcels = parcelData[type]||[];
+  const values  = new Set();
+  const fieldMap = { 'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse' };
+  const dataField = fieldMap[field]||field;
+  parcels.forEach(p => { const v=p[dataField]; if(v && v!=='Unknown' && v!=='') values.add(v); });
+  return Array.from(values).sort();
+}
+
+function generateCategoricalColors(values) {
+  const colors = {};
+  values.forEach((val,i) => { colors[val]=CATEGORICAL_PALETTE[i%CATEGORICAL_PALETTE.length]; });
+  colors['default']='#BBBBBB';
+  return colors;
+}
+
+function buildLegend(field, opt, type) {
+  const p  = STAT_PREFIX[type];
+  const el = document.getElementById(p+'-legend');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!opt) return;
+  if (opt.type==='categorical' && opt.colors) {
+    const entries = Object.entries(opt.colors).filter(([k])=>k!=='default');
+    if (entries.length>10) {
+      const parcels  = parcelData[type]||[];
+      const fieldMap = {'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse','Zone':'zone','Property Type':'type'};
+      const dataField= fieldMap[field]||field;
+      const counts={};
+      parcels.forEach(p=>{ const v=p[dataField]; if(v&&v!=='Unknown') counts[v]=(counts[v]||0)+1; });
+      entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count).slice(0,10)
+        .forEach(({val,color})=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
+      if (entries.length>10) { const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<span style="color:var(--ink-3);font-style:italic">...and ${entries.length-10} more</span>`; el.appendChild(item); }
+    } else {
+      entries.forEach(([val,color])=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
+    }
+  } else if (opt.type==='continuous') {
+    const ramp=opt.colorRamp||VALUE_RAMP;
+    const rampDiv=document.createElement('div'); rampDiv.className='legend-ramp';
+    ramp.forEach(color=>{ const seg=document.createElement('div'); seg.className='legend-ramp-seg'; seg.style.background=color; rampDiv.appendChild(seg); });
+    el.appendChild(rampDiv);
+    const parcels=parcelData[type]||[]; let labels;
+    if (opt.value.includes('Year')) {
+      const years=parcels.map(p=>p.yearBuilt).filter(y=>y>0);
+      labels=years.length?[Math.min(...years).toString(),Math.max(...years).toString()]:['1900','2020'];
+    } else if (opt.value==='Land Acres') {
+      const acres=parcels.map(p=>p.acreage).filter(a=>a>0);
+      labels=acres.length?['0 ac',acres.sort((a,b)=>a-b).slice(-1)[0].toFixed(1)+' ac']:['0 ac','5+ ac'];
+    } else {
+      const vals=parcels.map(p=>p.assessed2022).filter(v=>v>0);
+      if (vals.length) { const max=vals.sort((a,b)=>a-b).slice(-1)[0]; labels=['$0',max>=1e6?`$${(max/1e6).toFixed(1)}M`:`$${Math.round(max/1000)}K`]; }
+      else labels=['$0','$2M+'];
+    }
+    const scaleDiv=document.createElement('div'); scaleDiv.className='legend-scale'; scaleDiv.innerHTML=`<span>${labels[0]}</span><span>${labels[1]}</span>`; el.appendChild(scaleDiv);
+  }
+}
+
+function enterDashboard() {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+  setTimeout(() => {
+    [residentialMap,condoMap,commercialMap,vacantMap].forEach(m => m.resize());
+    // Now the dashboard is visible — render all charts that have data
+    ['residential','condo','commercial','vacant'].forEach(t => {
+      if (dataCollected[t]) updateChartsForType(t);
+    });
+  }, 300);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════════════════════════
+let searchTimeout;
+
+function initializeSearch() {
+  const searchInput   = document.getElementById('parcel-search');
+  const searchResults = document.getElementById('search-results');
+  if (!searchInput || !searchResults) return;
+  searchInput.addEventListener('input', e => {
+    clearTimeout(searchTimeout);
+    const query = e.target.value.trim();
+    if (query.length < 2) { searchResults.classList.remove('show'); return; }
+    searchTimeout = setTimeout(() => performSearch(query), 300);
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-container')) searchResults.classList.remove('show'); });
+  searchInput.addEventListener('click', e => { e.stopPropagation(); if (searchResults.children.length>0) searchResults.classList.add('show'); });
+}
+
+function performSearch(query) {
+  const searchResults = document.getElementById('search-results');
+  if (!searchResults) return;
+  const queryLower = query.toLowerCase();
+  const results = [];
+  Object.entries(parcelData).forEach(([type,parcels]) => {
+    parcels.forEach(parcel => {
+      if (parcel.address.toLowerCase().includes(queryLower) || parcel.parcelId.toLowerCase().includes(queryLower))
+        results.push({...parcel, type});
+    });
+  });
+  const limited = results.slice(0,20);
+  if (!limited.length) { searchResults.innerHTML='<div class="search-no-results">No parcels found matching "'+query+'"</div>'; searchResults.classList.add('show'); return; }
+  const fmt = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+  searchResults.innerHTML = limited.map(p => `
+    <div class="search-result-item" data-parcel-id="${p.parcelId}" data-type="${p.type}">
+      <div class="search-result-address">${p.address}</div>
+      <div class="search-result-details">
+        <span class="search-result-badge">${p.type}</span>
+        <span>${p.zone||'N/A'}</span><span>${fmt(p.assessed2022)}</span>
+        ${p.sqft>0?`<span>${Math.round(p.sqft).toLocaleString()} sf</span>`:''}
+      </div>
+    </div>`).join('');
+  searchResults.classList.add('show');
+  searchResults.querySelectorAll('.search-result-item').forEach(item => {
+    item.addEventListener('click', () => {
+      selectParcel(item.dataset.parcelId, item.dataset.type);
+      searchResults.classList.remove('show');
+      document.getElementById('parcel-search').value = '';
+    });
+  });
+}
+
+function selectParcel(parcelId, type) {
+  if (activeTab !== type) switchTab(type);
+  const parcel = parcelData[type].find(p => p.parcelId===parcelId);
+  if (!parcel) return;
+  showParcelDetail({
+    'Property Address':parcel.address,'Parcel ID':parcel.parcelId,'Owner':parcel.owner,
+    'Zone':parcel.zone,'Neighborhood':parcel.neighborhood,'Style Description':parcel.style,
+    'Effective Year Built':parcel.yearBuilt,'Gross Area of Primary Building':parcel.sqft,
+    'Land Acres':parcel.acreage,'Number of Bedroom':parcel.bedrooms,'Number of Bathrooms':parcel.bathrooms,
+    'Assessed Total':parcel.assessed2022,'Pre Year Assessed Total':parcel.assessed2020
+  }, type);
+  highlightParcelOnMap(parcelId, type);
+}
+
+function highlightParcelOnMap(parcelId, type) {
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map  = maps[type];
+  if (!map) return;
+  if (map.getLayer('parcel-highlight')) map.removeLayer('parcel-highlight');
+  if (map.getSource('parcel-highlight')) map.removeSource('parcel-highlight');
+  const features = map.querySourceFeatures('parcels',{ sourceLayer:'parcels', filter:['==',['get','Parcel ID'],parcelId] });
+  if (!features.length) return;
+  const feature = features[0];
+  map.addSource('parcel-highlight',{ type:'geojson', data:{ type:'Feature', geometry:feature.geometry, properties:feature.properties }});
+  map.addLayer({ id:'parcel-highlight', type:'line', source:'parcel-highlight', paint:{ 'line-color':'#FFD700','line-width':4,'line-opacity':1 }});
+  map.fitBounds(getBBox(feature.geometry),{ padding:100, duration:1000 });
+  setTimeout(() => {
+    if (map.getLayer('parcel-highlight'))  map.removeLayer('parcel-highlight');
+    if (map.getSource('parcel-highlight')) map.removeSource('parcel-highlight');
+  }, 5000);
+}
+
+function getBBox(geometry) {
+  if (geometry.type==='Polygon') {
+    const coords=geometry.coordinates[0], lngs=coords.map(c=>c[0]), lats=coords.map(c=>c[1]);
+    return [[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]];
+  } else if (geometry.type==='MultiPolygon') {
+    const all=geometry.coordinates.flat(2), lngs=all.filter((_,i)=>i%2===0), lats=all.filter((_,i)=>i%2===1);
+    return [[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]];
+  }
+  return [[-180,-90],[180,90]];
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.nav-tab[data-tab="${tab}"]`).classList.add('active');
+  document.querySelectorAll('.dashboard').forEach(d => d.classList.remove('active'));
+  document.getElementById(`dash-${tab}`).classList.add('active');
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map  = maps[tab];
+  if (map) setTimeout(() => map.resize(), 100);
+  if (dataCollected[tab]) {
+    updateChartsForType(tab);
+    if (scatterPending[tab]) { updateScatter(tab); scatterPending[tab]=false; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function updateChartsForType(type) {
+  const parcels = parcelData[type];
+  if (!parcels?.length) return;
+  setTimeout(() => {
+    if (type==='residential') updateResStyleMeanChart(parcels);
+    if (type==='condo')       { updateCondoNeighborhoodChart(parcels); updateStateUseChart(type,parcels); }
+    if (type==='commercial')  { updateCommercialZoneChart(parcels); updateCommercialUseChart(parcels); updateStateUseChart(type,parcels); updateCommercialStyleChart(parcels); }
+    if (type==='vacant')      { updateVacantUseChart(parcels); updateStateUseChart(type,parcels); }
+    if (type===activeTab) updateScatter(type);
+    else scatterPending[type] = true;
+  }, 100);
+}
+
+// ─── Shared chart renderer — called directly AND by ResizeObserver ──────────
+function renderScatterInto(container, type, sample, ax) {
+  d3.select(container).selectAll('*').remove();
+  const width  = container.clientWidth  || 300;
+  const height = container.clientHeight || 260;
+  const fs = Math.max(9, Math.min(13, width / 28));
+  const margin = { top:12, right:12, bottom:Math.round(fs*4.2), left:Math.round(fs*5.2) };
+  const iW = Math.max(width  - margin.left - margin.right,  60);
+  const iH = Math.max(height - margin.top  - margin.bottom, 60);
+  const isYearX = ax.x === 'yearBuilt';
+
+  // Clip to 95th percentile on each axis to suppress outliers
+  const xVals = sample.map(d=>d[ax.x]);
+  const yVals = sample.map(d=>d[ax.y]);
+  const xMax = isYearX ? d3.max(xVals) * 1.001 : percentile(xVals, 95) * 1.05;
+  const yMax = percentile(yVals, 95) * 1.05;
+  const xMin = isYearX ? d3.min(xVals) - 2 : 0;
+  // Keep outliers in data (visible as clipped dots at edge) but don't let them blow the scale
+  const clipped = sample.map(d => ({
+    ...d,
+    _cx: Math.min(d[ax.x], xMax),
+    _cy: Math.min(d[ax.y], yMax),
+    _outlier: d[ax.x] > xMax || d[ax.y] > yMax
+  }));
+
+  const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0,iW]);
+  const yScale = d3.scaleLinear().domain([0, yMax]).range([iH,0]);
+
+  const fmtX = d => isYearX ? Math.round(d).toString() : ax.x.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
+  const fmtY = d => ax.y.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
+  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/55))).tickFormat(fmtX);
+  const yAxis = d3.axisLeft(yScale).ticks(Math.max(3,Math.floor(iH/40))).tickFormat(fmtY);
+
+  const svg = d3.select(container).append('svg').attr('width',width).attr('height',height);
+  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
+  xAxisG.selectAll('text').style('font-size',fs+'px');
+  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
+  yAxisG.selectAll('text').style('font-size',fs+'px');
+
+  svg.append('text').attr('text-anchor','middle').attr('x',margin.left+iW/2).attr('y',height-2)
+    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.x]||ax.x);
+  svg.append('text').attr('text-anchor','middle').attr('transform','rotate(-90)').attr('x',-(margin.top+iH/2)).attr('y',fs+1)
+    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.y]||ax.y);
+
+  const dotR = Math.max(2,Math.min(4,width/80));
+  const dots = g.append('g').attr('class','dots');
+  dots.selectAll('circle').data(clipped).enter().append('circle')
+    .attr('class','dot').attr('cx',d=>xScale(d._cx)).attr('cy',d=>yScale(d._cy))
+    .attr('r',d=>d._outlier ? dotR*0.7 : dotR)
+    .attr('fill',d=>d._outlier ? '#aaa' : COLORS[type])
+    .attr('fill-opacity',d=>d._outlier ? 0.25 : 0.5)
+    .attr('stroke',d=>d._outlier ? '#aaa' : COLORS[type]).attr('stroke-width',1)
+    .on('mouseover', function(event,d) {
+      d3.select(this).attr('r',dotR+2).attr('fill-opacity',0.9).attr('stroke-width',2);
+      const xVal = isYearX ? d[ax.x].toString() : ax.x.includes('assessed') ? `$${Math.round(d[ax.x]).toLocaleString()}` : Math.round(d[ax.x]).toLocaleString();
+      const yVal = ax.y.includes('assessed') ? `$${Math.round(d[ax.y]).toLocaleString()}` : Math.round(d[ax.y]).toLocaleString();
+      const outlierNote = d._outlier ? '<br><em style="color:#aaa">outlier — clipped to edge</em>' : '';
+      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+        .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${outlierNote}`);
+    })
+    .on('mouseout', function() { d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1); tooltip.classed('show',false); });
+
+  const zoom = d3.zoom().scaleExtent([0.5,20]).extent([[0,0],[iW,iH]]).translateExtent([[0,0],[iW,iH]])
+    .on('zoom', event => {
+      const nx=event.transform.rescaleX(xScale), ny=event.transform.rescaleY(yScale);
+      const cx=nx.copy().domain([Math.max(isYearX?1800:0,nx.domain()[0]),Math.max(0,nx.domain()[1])]);
+      const cy=ny.copy().domain([Math.max(0,ny.domain()[0]),Math.max(0,ny.domain()[1])]);
+      xAxisG.call(xAxis.scale(cx)); xAxisG.selectAll('text').style('font-size',fs+'px');
+      yAxisG.call(yAxis.scale(cy)); yAxisG.selectAll('text').style('font-size',fs+'px');
+      dots.selectAll('circle').attr('cx',d=>cx(Math.min(d[ax.x],cx.domain()[1]))).attr('cy',d=>cy(Math.min(d[ax.y],cy.domain()[1])));
+    });
+  svg.call(zoom);
+  svg.on('dblclick.zoom', () => svg.transition().duration(750).call(zoom.transform,d3.zoomIdentity));
+}
+
+// renderBarInto: data items have { label, count, mean }
+// One bar per row (count), mean assessment shown as text label at bar end
+function renderBarInto(container, data, color) {
+  d3.select(container).selectAll('*').remove();
+  if (!data.length) return;
+  const width  = container.clientWidth  || 280;
+  const height = container.clientHeight || 160;
+  const fs = Math.max(9, Math.min(13, width / 22));
+  // Right margin wide enough for mean label e.g. "$312K"
+  const margin = { top:6, right:Math.round(fs*5.5), bottom:Math.round(fs*2.8), left:Math.round(Math.min(width*0.4, fs*12)) };
+  const iW = Math.max(width  - margin.left - margin.right, 30);
+  const iH = Math.max(height - margin.top  - margin.bottom, 30);
+
+  const fmtVal = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+
+  const xScale = d3.scaleLinear().domain([0, d3.max(data,d=>d.mean)]).range([0,iW]);
+  const yScale = d3.scaleBand().domain(data.map(d=>d.label)).range([0,iH]).padding(0.2);
+
+  const fmtAxis = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/50))).tickFormat(fmtAxis);
+  const yAxis = d3.axisLeft(yScale).tickSize(0);
+
+  const svg = d3.select(container).append('svg').attr('width',width).attr('height',height);
+  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
+  xAxisG.selectAll('text').style('font-size',fs+'px');
+
+  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
+  yAxisG.selectAll('text').style('font-size',fs+'px').style('text-anchor','end').each(function(d) {
+    const maxChars = Math.floor(margin.left / (fs*0.6));
+    if (d && d.length > maxChars) d3.select(this).text(d.slice(0,maxChars-1)+'…');
+  });
+
+  // Single bar per row, width = count
+  const bars = g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar')
+    .attr('x',0).attr('y',d=>yScale(d.label))
+    .attr('width',d=>Math.max(0,xScale(d.mean)))
+    .attr('height',yScale.bandwidth())
+    .attr('fill',color).attr('rx',2);
+
+  // Invisible full-row hover target
+  g.selectAll('.bar-hover').data(data).enter().append('rect').attr('class','bar-hover')
+    .attr('x',0).attr('y',d=>yScale(d.label))
+    .attr('width',iW).attr('height',yScale.bandwidth())
+    .attr('fill','transparent')
+    .on('mouseover', function(event,d) {
+      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+        .html(`<strong>${d.label}</strong><br>Count: ${d.count.toLocaleString()}<br>Mean Assessment: ${fmtVal(d.mean)}`);
+    })
+    .on('mouseout', () => tooltip.classed('show',false));
+
+  // Zoom pans the count axis, labels follow
+  const zoom = d3.zoom().scaleExtent([1,5]).translateExtent([[0,0],[iW,iH]])
+    .on('zoom', event => {
+      const nx = event.transform.rescaleX(xScale);
+      xAxisG.call(d3.axisBottom(nx).ticks(Math.max(3,Math.floor(iW/50))));
+      xAxisG.selectAll('text').style('font-size',fs+'px');
+      bars.attr('width',d=>Math.max(0,nx(d.mean)));
+    });
+  svg.call(zoom);
+}
+
+
+// ─── ResizeObserver wrapper — attaches to a container, re-renders on resize ──
+function watchAndRender(container, renderFn) {
+  if (!container) return;
+  // Store the render function so we can call it manually too
+  container._renderFn = renderFn;
+  if (container._ro) container._ro.disconnect();
+  const ro = new ResizeObserver(() => { if (container.clientWidth > 20 && container.clientHeight > 20) renderFn(); });
+  ro.observe(container);
+  container._ro = ro;
+  // Render immediately (works if container is already visible with real size)
+  renderFn();
+}
+
+// ─── Scatter ───────────────────────────────────────────────────────────────
+function updateScatter(type) {
+  const parcels = parcelData[type];
+  const ax      = scatterAxes[type];
+  const p       = STAT_PREFIX[type];
+  const container = document.getElementById(p+'Scatter');
+  if (!container || !parcels?.length) return;
+
+  const raw    = parcels.filter(q => q[ax.x]>0 && q[ax.y]>0);
+  const step   = Math.max(1, Math.ceil(raw.length/1000));
+  const sample = raw.filter((_,i) => i%step===0);
+
+  const countEl = document.getElementById(p+'-scatter-count');
+  if (countEl) countEl.textContent = ' ('+sample.length.toLocaleString()+' pts)';
+
+  watchAndRender(container, () => renderScatterInto(container, type, sample, ax));
+  scatterPending[type] = false;
+}
+
+// ─── Bar charts ────────────────────────────────────────────────────────────
+function updateResStyleMeanChart(parcels) {
+  const container = document.getElementById('resStyleMeanChart');
+  if (!container) return;
+  const grouped = {};
+  parcels.forEach(p => {
+    if (!p.style || p.style==='Unknown' || p.assessed2022<=0) return;
+    if (!grouped[p.style]) grouped[p.style]={sum:0,count:0};
+    grouped[p.style].sum   += p.assessed2022;
+    grouped[p.style].count += 1;
+  });
+  const data = Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.residential));
+}
+
+function updateCondoNeighborhoodChart(parcels) {
+  const container = document.getElementById('condoNeighborhoodChart');
+  if (!container) return;
+  const grouped={};
+  parcels.forEach(p=>{ if(p.neighborhood&&p.neighborhood!=='Unknown'&&p.assessed2022>0){
+    if(!grouped[p.neighborhood]) grouped[p.neighborhood]={sum:0,count:0};
+    grouped[p.neighborhood].sum+=p.assessed2022; grouped[p.neighborhood].count+=1;
+  }});
+  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
+}
+
+function updateStateUseChart(type, parcels) {
+  const ids = { condo:'condoStateUseChart', commercial:'commercialStateUseChart', vacant:'vacantStateUseChart' };
+  const container = document.getElementById(ids[type]);
+  if (!container) return;
+  const grouped={};
+  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
+    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
+    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
+  }});
+  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS[type]));
+}
+
+function updateCommercialZoneChart(parcels) {
+  const container = document.getElementById('commercialClassChart');
+  if (!container) return;
+  const grouped={};
+  parcels.forEach(p=>{ if(p.zone&&p.zone!=='Unknown'&&p.assessed2022>0){
+    if(!grouped[p.zone]) grouped[p.zone]={sum:0,count:0};
+    grouped[p.zone].sum+=p.assessed2022; grouped[p.zone].count+=1;
+  }});
+  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,10);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
+}
+function updateCommercialStyleChart(parcels) {
+  const container = document.getElementById('commercialStyleChart');
+  if (!container) return;
+  const grouped = {};
+  parcels.forEach(p => {
+    if (!p.style || p.style === 'Unknown' || p.assessed2022 <= 0) return;
+    if (!grouped[p.style]) grouped[p.style] = { sum: 0, count: 0 };
+    grouped[p.style].sum   += p.assessed2022;
+    grouped[p.style].count += 1;
+  });
+  const data = Object.entries(grouped)
+    .map(([label, { sum, count }]) => ({ label, count, mean: sum / count }))
+    .sort((a, b) => b.mean - a.mean).slice(0, 8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
+}
+function updateCommercialUseChart(parcels) {
+  const container = document.getElementById('commercialUseChart');
+  if (!container) return;
+  const grouped={};
+  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
+    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
+    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
+  }});
+  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
+}
+
+function updateVacantUseChart(parcels) {
+  const container = document.getElementById('vacantUseChart');
+  if (!container) return;
+  const grouped={};
+  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
+    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
+    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
+  }});
+  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
+    .sort((a,b)=>b.mean-a.mean).slice(0,8);
+  if (!data.length) return;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.vacant));
+}
+
+window.setScatterAxes = function(type, x, y, btn) {
+  scatterAxes[type] = { x, y };
+  btn.parentElement.querySelectorAll('.scatter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateScatter(type);
+};
+
+window.toggleSidebar = function(type, side) {
+  const state = sidebarState[type];
+  state[side] = !state[side];
+  const dashboard  = document.getElementById(`dash-${type}`);
+  if (!dashboard) return;
+  const leftPanel  = dashboard.querySelector('.dash-left');
+  const rightPanel = dashboard.querySelector('.dash-right');
+  if (side==='left'  && leftPanel)  leftPanel.style.marginLeft   = state.left  ? '-320px' : '0';
+  if (side==='right' && rightPanel) rightPanel.style.marginRight = state.right ? '-280px' : '0';
+  const btn = side==='left' ? dashboard.querySelector('.dash-left .sidebar-toggle') : dashboard.querySelector('.dash-right .sidebar-toggle');
+  if (btn) btn.textContent = state[side] ? (side==='left'?'›':'‹') : (side==='left'?'‹':'›');
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map  = maps[type];
+  if (map) setTimeout(() => map.resize(), 350);
+};
+
+window.toggleParcelFilter = function(type) {
+  showAllParcels[type] = !showAllParcels[type];
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map  = maps[type];
+  if (!map || !map.getLayer('parcels-fill')) return;
+  const btn = document.getElementById(`${type}-filter-btn`);
+  if (btn) { btn.textContent=showAllParcels[type]?'Show Only '+type.charAt(0).toUpperCase()+type.slice(1):'Show All Parcels'; btn.classList.toggle('active',showAllParcels[type]); }
+  let filterExpr;
+  if (showAllParcels[type]) { filterExpr=['all']; }
+  else if (type==='vacant')  filterExpr=['any',['==',['get','Property Type'],'Vacant'],['==',['get','Property Type'],'Vacant Land']];
+  else if (type==='condo')   filterExpr=['any',['==',['get','Property Type'],'Condo'],['==',['get','Property Type'],'Condominium']];
+  else                       filterExpr=['==',['get','Property Type'],type.charAt(0).toUpperCase()+type.slice(1)];
+  map.setFilter('parcels-fill',filterExpr);
+  map.setFilter('parcels-outline',filterExpr);
+};
+
+// Sidebar resize handles
+(function initResizableSidebars() {
+  let isResizing=false, currentHandle=null, startX=0, startWidth=0;
+  document.querySelectorAll('.resize-handle').forEach(handle => {
+    handle.addEventListener('mousedown', e => {
+      isResizing=true; currentHandle=handle; startX=e.clientX;
+      startWidth=handle.parentElement.offsetWidth;
+      handle.classList.add('resizing');
+      document.body.style.cursor='ew-resize'; document.body.style.userSelect='none';
+      e.preventDefault();
+    });
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isResizing||!currentHandle) return;
+    const sidebar=currentHandle.parentElement, dashboard=sidebar.parentElement;
+    const side=currentHandle.dataset.side;
+    let newWidth = side==='left' ? startWidth+(e.clientX-startX) : startWidth-(e.clientX-startX);
+    newWidth = Math.max(200,Math.min(600,newWidth));
+    dashboard.style.setProperty(side==='left'?'--left-width':'--right-width', newWidth+'px');
+    const dashId=dashboard.id.replace('dash-','');
+    const maps={residential:residentialMap,condo:condoMap,commercial:commercialMap,vacant:vacantMap};
+    const map=maps[dashId]; if(map) map.resize();
+  });
+  document.addEventListener('mouseup', () => {
+    if (currentHandle) currentHandle.classList.remove('resizing');
+    document.body.style.cursor=''; document.body.style.userSelect='';
+    isResizing=false; currentHandle=null;
+  });
+})();
+
 function showLoading(msg) {
-    const el = document.getElementById('loading-overlay');
-    if (!el) return;
-    el.style.display = 'flex';
-    const m = document.getElementById('loading-message');
-    if (m) m.textContent = msg;
+  const el=document.getElementById('loading-overlay'); if(el) el.style.display='flex';
+  const m=document.getElementById('loading-message'); if(m) m.textContent=msg;
 }
-
 function hideLoading() {
-    const el = document.getElementById('loading-overlay');
-    if (el) el.style.display = 'none';
+  const el=document.getElementById('loading-overlay');
+  if(el){ el.style.opacity='0'; el.style.transition='opacity .4s'; setTimeout(()=>{ el.style.display='none'; el.style.opacity='1'; },400); }
+  document.getElementById('landing').style.display='flex';
 }
-
-function showWarning(msg) {
-    const el = document.getElementById('loading-overlay');
-    if (!el) return;
-    el.style.display = 'flex';
-    el.innerHTML = `
-        <div style="background:white;padding:2rem;border-radius:8px;max-width:500px;text-align:center;">
-            <div style="font-size:2rem;margin-bottom:1rem;">⚠️</div>
-            <p style="color:#f59e0b;font-weight:600;margin-bottom:.5rem;">Notice</p>
-            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">${msg}</p>
-            <button onclick="hideLoading()"
-                style="padding:.5rem 1.5rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500;">
-                Continue Anyway
-            </button>
-        </div>`;
-}
-
 function showError(msg) {
-    hideLoading();
-    const el = document.getElementById('loading-overlay');
-    if (!el) return;
-    el.style.display = 'flex';
-    el.innerHTML = `
-        <div style="background:white;padding:2rem;border-radius:8px;max-width:400px;text-align:center;">
-            <div style="font-size:2rem;margin-bottom:1rem;">❌</div>
-            <p style="color:#dc2626;font-weight:600;margin-bottom:.5rem;">Error</p>
-            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">${msg}</p>
-            <button onclick="location.reload()"
-                style="padding:.5rem 1rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;">
-                Try Again
-            </button>
-        </div>`;
+  const el=document.getElementById('loading-overlay'); if(!el) return;
+  el.innerHTML=`<div style="background:#1a1a2e;border:1px solid rgba(200,75,49,.3);padding:2rem;border-radius:10px;max-width:600px;text-align:center;color:#f7f4ef;">
+    <div style="font-size:1.8rem;margin-bottom:1rem">⚠️</div>
+    <p style="font-weight:600;color:#e8865a;margin-bottom:.5rem">Error Loading Application</p>
+    <p style="font-size:.85rem;color:rgba(247,244,239,.6);margin-bottom:1rem">${msg}</p>
+    <button onclick="location.reload()" style="padding:.6rem 1.5rem;background:#c84b31;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:600">Reload Page</button>
+  </div>`;
+}
+function showPMTilesError(msg) {
+  const el=document.getElementById('loading-overlay'); if(!el) return;
+  el.innerHTML=`<div style="background:#1a1a2e;border:1px solid rgba(200,75,49,.25);padding:2rem;border-radius:10px;max-width:520px;color:#f7f4ef;">
+    <h3 style="color:#e8865a;margin-bottom:.75rem;text-align:center">⚠️ parcels.pmtiles not found</h3>
+    <p style="color:rgba(247,244,239,.6);font-size:.82rem;margin-bottom:1rem;line-height:1.6">
+      Make sure <code>parcels.pmtiles</code> is in the same folder as index.html and you're running a local server at <code>http://localhost:8000</code>.
+    </p>
+    <div style="display:flex;gap:.5rem;justify-content:center">
+      <button onclick="location.reload()" style="padding:.5rem 1.25rem;background:#c84b31;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:600">Retry</button>
+    </div>
+  </div>`;
 }
 
-function showPMTilesError(errorMsg) {
-    hideLoading();
-    const el = document.getElementById('loading-overlay');
-    if (!el) return;
-    el.style.display = 'flex';
-    el.innerHTML = `
-        <div style="background:white;padding:2rem;border-radius:8px;max-width:550px;text-align:left;">
-            <div style="text-align:center;font-size:2rem;margin-bottom:1rem;">📦</div>
-            <h3 style="color:#dc2626;font-weight:600;margin-bottom:.5rem;text-align:center;">PMTiles File Not Found</h3>
-            <p style="color:#666;font-size:.9rem;margin-bottom:1rem;">
-                The app cannot find <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;">parcels.pmtiles</code> file.
-            </p>
-            <div style="background:#f9fafb;border-left:3px solid #0979e9;padding:1rem;margin-bottom:1rem;">
-                <p style="font-size:.875rem;margin-bottom:.75rem;"><strong>Troubleshooting:</strong></p>
-                <ol style="font-size:.875rem;line-height:1.6;color:#666;padding-left:1.25rem;">
-                    <li>Make sure <code>parcels.pmtiles</code> is in the same folder as <code>index.html</code></li>
-                    <li>Check the filename is exactly: <code>parcels.pmtiles</code> (lowercase)</li>
-                    <li>If using Python server, make sure it's running in the correct directory</li>
-                    <li>Try a different server like <code>npx http-server -p 8000</code></li>
-                </ol>
-            </div>
-            <details style="margin-bottom:1rem;">
-                <summary style="cursor:pointer;color:#6b8cae;font-size:.875rem;">Error Details</summary>
-                <pre style="background:#f3f4f6;padding:.75rem;border-radius:4px;font-size:.75rem;overflow-x:auto;margin-top:.5rem;">${errorMsg}</pre>
-            </details>
-            <div style="display:flex;gap:.5rem;justify-content:center;">
-                <button onclick="hideLoading()"
-                    style="padding:.5rem 1rem;background:#e5e7eb;color:#374151;border:none;border-radius:4px;cursor:pointer;font-size:.875rem;">
-                    View Maps Only
-                </button>
-                <button onclick="location.reload()"
-                    style="padding:.5rem 1rem;background:#6b8cae;color:white;border:none;border-radius:4px;cursor:pointer;font-size:.875rem;">
-                    Try Again
-                </button>
-            </div>
-        </div>`;
-}
+console.log('✅ D3 Interactive Charts Ready');

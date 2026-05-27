@@ -1,107 +1,143 @@
 #!/usr/bin/env python3
 """
-Simple HTTP server for serving PMTiles files with proper headers.
-This fixes the content-length header issue when serving .pmtiles files.
-
-Usage:
-    python3 serve.py [port]
-
-Default port is 8000
+PMTiles-compatible development server with proper byte-range support.
+Usage: python serve.py [port]
 """
 
 import http.server
 import socketserver
 import sys
 import os
-from functools import partial
+import re
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 
-class PMTilesHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    """HTTP request handler with proper headers for PMTiles files"""
-    
+class RangeHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+
     def end_headers(self):
-        # Add CORS headers to allow cross-origin requests
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Range, Content-Type')
         self.send_header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges')
-        
-        # Enable byte-range requests for PMTiles (CRITICAL!)
         self.send_header('Accept-Ranges', 'bytes')
-        
-        # Cache control for PMTiles
         if self.path.endswith('.pmtiles'):
-            self.send_header('Cache-Control', 'public, max-age=31536000')
-        
+            self.send_header('Cache-Control', 'no-cache')
         super().end_headers()
-    
+
     def do_OPTIONS(self):
-        """Handle OPTIONS requests for CORS preflight"""
         self.send_response(200)
         self.end_headers()
-    
-    def guess_type(self, path):
-        """Override to add PMTiles MIME type"""
-        if path.endswith('.pmtiles'):
-            return 'application/vnd.pmtiles'
-        return super().guess_type(path)
-    
-    def do_GET(self):
-        """Handle GET requests with proper range support"""
-        # Log the request
-        print(f"GET {self.path}")
-        if 'Range' in self.headers:
-            print(f"  Range: {self.headers['Range']}")
-        
-        # Use parent's implementation which handles ranges
-        return super().do_GET()
-    
+
     def do_HEAD(self):
-        """Handle HEAD requests"""
         print(f"HEAD {self.path}")
         return super().do_HEAD()
 
-# Change to the directory where this script is located
+    def do_GET(self):
+        # Only handle range requests for local files (not directories)
+        range_header = self.headers.get('Range')
+
+        if range_header:
+            # Resolve file path
+            path = self.translate_path(self.path)
+            if os.path.isfile(path):
+                self.send_range_response(path, range_header)
+                return
+
+        # Fall back to normal handling
+        return super().do_GET()
+
+    def send_range_response(self, path, range_header):
+        file_size = os.path.getsize(path)
+
+        # Parse Range: bytes=START-END
+        match = re.match(r'bytes=(\d*)-(\d*)', range_header)
+        if not match:
+            self.send_error(400, 'Invalid Range header')
+            return
+
+        start_str, end_str = match.group(1), match.group(2)
+
+        if start_str == '':
+            # Suffix range: bytes=-N  (last N bytes)
+            start = file_size - int(end_str)
+            end   = file_size - 1
+        else:
+            start = int(start_str)
+            end   = int(end_str) if end_str else file_size - 1
+
+        # Clamp
+        end = min(end, file_size - 1)
+
+        if start > end or start >= file_size:
+            self.send_response(416)  # Range Not Satisfiable
+            self.send_header('Content-Range', f'bytes */{file_size}')
+            self.end_headers()
+            return
+
+        length = end - start + 1
+
+        print(f"GET {self.path}  Range: bytes={start}-{end}/{file_size}  ({length:,} bytes)")
+
+        ctype = self.guess_type(path)
+
+        self.send_response(206)  # Partial Content
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(length))
+        self.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
+        self.end_headers()
+
+        try:
+            with open(path, 'rb') as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (ConnectionAbortedError, BrokenPipeError):
+            pass  # Client disconnected — normal for tile loading
+
+    def guess_type(self, path):
+        if str(path).endswith('.pmtiles'):
+            return 'application/vnd.pmtiles'
+        return super().guess_type(path)
+
+    def log_message(self, format, *args):
+        # Suppress the default double-logging; our do_GET prints already
+        pass
+
+
+# ── Boot ──────────────────────────────────────────────────────────────────────
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
 print("=" * 60)
-print(f"PMTiles Development Server")
+print("PMTiles Development Server (range-request enabled)")
 print("=" * 60)
-print(f"Server: http://localhost:{PORT}")
+print(f"URL:       http://localhost:{PORT}")
 print(f"Directory: {os.getcwd()}")
-print(f"\nFeatures:")
-print(f"  ✓ CORS enabled")
-print(f"  ✓ Range requests supported")
-print(f"  ✓ PMTiles MIME type set")
-print(f"\nOpen http://localhost:{PORT} in your browser")
-print(f"Press Ctrl+C to stop")
-print("=" * 60)
-print()
 
-# Check if parcels.pmtiles exists
 if os.path.exists('parcels.pmtiles'):
     size = os.path.getsize('parcels.pmtiles')
-    print(f"✓ Found parcels.pmtiles ({size:,} bytes)")
+    print(f"PMTiles:   ✓ parcels.pmtiles ({size:,} bytes)")
 else:
-    print(f"⚠ Warning: parcels.pmtiles not found in {os.getcwd()}")
-    print(f"  Make sure your PMTiles file is in this directory")
+    print("PMTiles:   ⚠ parcels.pmtiles NOT FOUND")
 
+print("=" * 60)
 print()
 
 try:
-    # Use ThreadingTCPServer for better performance
-    with socketserver.ThreadingTCPServer(("", PORT), PMTilesHTTPRequestHandler) as httpd:
-        httpd.allow_reuse_address = True
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.ThreadingTCPServer(("", PORT), RangeHTTPRequestHandler) as httpd:
         httpd.serve_forever()
 except KeyboardInterrupt:
-    print("\n\nServer stopped.")
+    print("\nServer stopped.")
     sys.exit(0)
 except OSError as e:
-    if e.errno == 48:  # Address already in use
-        print(f"\n✗ Error: Port {PORT} is already in use")
-        print(f"  Try a different port: python3 serve.py 8001")
+    if e.errno in (48, 98):
+        print(f"Port {PORT} already in use. Try: python serve.py 8001")
     else:
-        print(f"\n✗ Error: {e}")
+        print(f"Error: {e}")
     sys.exit(1)

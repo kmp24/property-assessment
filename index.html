@@ -1,720 +1,1021 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Property Assessment Dashboard - Newington 2025 Revaluation</title>
-    
-    <!-- Self-hosted libraries for FAST loading (no CDN dependency) -->
-    <link rel="stylesheet" href="libs/maplibre-gl.css" />
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Property Assessment Value — Property Assessment Dashboard</title>
 
-        :root {
-            --primary: #6b8cae;
-            --primary-dark: #4a6b8a;
-            --bg: #f5f5f5;
-            --text: #333333;
-            --text-light: #666666;
-            --border: #dddddd;
-        }
+<!-- External Dependencies -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
 
-        body {
-            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-        }
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --ink:        #1a1a2e;
+  --ink-2:      #2d2d44;
+  --ink-3:      #5a5a7a;
+  --paper:      #f7f4ef;
+  --paper-2:    #ede9e0;
+  --paper-3:    #ddd8cc;
+  --accent:     #EE7733;
+  --accent-2:   #fd8d3c;
+  --res:        #EE7733;
+  --condo:      #0077BB;
+  --comm:       #33BBEE;
+  --vacant:     #009988;
+  --card-r: 12px;
+  --shadow: 0 2px 16px rgba(26,26,46,.08);
+  --shadow-lg: 0 8px 40px rgba(26,26,46,.14);
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --serif: 'Playfair Display', serif;
+}
 
-        .app-container {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESET & BASE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); color: var(--ink); background: var(--paper); }
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
 
-        /* Header */
-        .header {
-            background: white;
-            padding: 1.5rem 2rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 2rem;
-        }
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOADING OVERLAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+#loading-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 1.5rem;
+}
+.loader-logo { font-family: var(--serif); font-size: 2rem; color: var(--paper); letter-spacing: .02em; }
+.loader-sub  { font-family: var(--mono); font-size: .75rem; color: var(--ink-3); letter-spacing: .1em; text-transform: uppercase; }
+.loader-bar  { width: 200px; height: 2px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
+.loader-fill { height: 100%; background: var(--accent); width: 30%; animation: fill 1.8s ease-in-out infinite alternate; }
+@keyframes fill { to { width: 90%; } }
 
-        .logo {
-            width: 60px;
-            height: 60px;
-            background: var(--primary);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
+/* ═══════════════════════════════════════════════════════════════════════════
+   LANDING PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+#landing {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--ink);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.landing-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1.5rem 3rem;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.landing-brand { font-family: var(--serif); font-size: 1.25rem; color: var(--paper); }
+.landing-badge {
+  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
+  letter-spacing: .1em; text-transform: uppercase;
+  border: 1px solid rgba(200,75,49,.4); border-radius: 20px; padding: .25rem .75rem;
+}
 
-        .header-title h1 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
+.landing-hero {
+  flex: 1; display: flex; align-items: center; padding: 5rem 3rem 3rem;
+  gap: 6rem; max-width: 1400px; margin: 0 auto; width: 100%;
+}
+.hero-text { flex: 1.2; min-width: 0; }
+.hero-eyebrow {
+  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
+  letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1.5rem;
+  display: flex; align-items: center; gap: .75rem;
+}
+.hero-eyebrow::before { content: ''; display: block; width: 2rem; height: 1px; background: var(--accent-2); }
+.hero-title {
+  font-family: var(--serif); font-size: clamp(3rem, 5vw, 5rem);
+  color: var(--paper); line-height: 1.05; margin-bottom: 2rem;
+  font-weight: 900;
+}
+.hero-title em { color: var(--accent-2); font-style: normal; }
+.hero-desc {
+  font-size: 1.05rem; line-height: 1.75; color: rgba(247,244,239,.6);
+  max-width: 540px; margin-bottom: 3rem; font-weight: 300;
+}
+.hero-cta {
+  display: inline-flex; align-items: center; gap: 1rem;
+  background: var(--accent); color: white;
+  font-family: var(--sans); font-weight: 600; font-size: 1rem;
+  padding: 1rem 2rem; border-radius: 6px;
+  transition: transform .15s, box-shadow .15s;
+}
+.hero-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(198,75,49,.4); }
+.hero-cta svg { transition: transform .2s; }
+.hero-cta:hover svg { transform: translateX(4px); }
 
-        .header-title p {
-            font-size: 0.875rem;
-            color: var(--text-light);
-        }
+.hero-stats {
+  flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: rgba(255,255,255,.06); border-radius: var(--card-r); overflow: hidden;
+  align-self: stretch; max-height: 380px;
+}
+.hero-stat {
+  background: rgba(255,255,255,.03); padding: 2rem 1.5rem;
+  display: flex; flex-direction: column; justify-content: center;
+  border: none; text-align: left; transition: background .2s;
+}
+.hero-stat:hover { background: rgba(255,255,255,.07); }
+.hero-stat-value {
+  font-family: var(--mono); font-size: 1.6rem; font-weight: 500;
+  margin-bottom: .4rem;
+}
+.hero-stat-label {
+  font-size: .8rem; color: rgba(247,244,239,.45); text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.res-color  { color: var(--res); }
+.condo-color{ color: var(--condo); }
+.comm-color { color: var(--comm); }
+.vac-color  { color: var(--vacant); }
 
-        .home-btn {
-            margin-left: auto;
-            padding: 0.75rem 1.5rem;
-            border: 2px solid var(--border);
-            background: white;
-            cursor: pointer;
-            font-size: 1.25rem;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
+.landing-features {
+  border-top: 1px solid rgba(255,255,255,.06);
+  padding: 3rem;
+  display: flex; gap: 3rem; max-width: 1400px; margin: 0 auto; width: 100%;
+}
+.feature {
+  flex: 1; display: flex; gap: 1rem; align-items: flex-start;
+}
+.feature-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: rgba(200,75,49,.15); display: flex; align-items: center; justify-content: center;
+  color: var(--accent-2); font-size: 1rem; flex-shrink: 0;
+}
+.feature-title { font-size: .9rem; font-weight: 600; color: var(--paper); margin-bottom: .3rem; }
+.feature-desc  { font-size: .8rem; color: rgba(247,244,239,.4); line-height: 1.6; }
 
-        .home-btn:hover {
-            background: var(--bg);
-        }
+/* ═══════════════════════════════════════════════════════════════════════════
+   APP SHELL
+   ═══════════════════════════════════════════════════════════════════════════ */
+#app { display: none; flex-direction: column; height: 100vh; overflow: hidden; }
 
-        /* Tabs */
-        .tabs-container {
-            background: white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: center;
-        }
+/* ─── Top Nav ──────────────────────────────────────────────────────────────── */
+.app-nav {
+  height: 52px; flex-shrink: 0;
+  background: var(--ink); color: var(--paper);
+  display: flex; align-items: center; padding: 0 1.5rem;
+  gap: 1rem; border-bottom: 1px solid rgba(255,255,255,.08);
+  z-index: 10;
+}
+.nav-brand { font-family: var(--serif); font-size: 1.1rem; letter-spacing: .02em; white-space: nowrap; }
+.nav-sep   { width: 1px; height: 20px; background: rgba(255,255,255,.12); flex-shrink: 0; }
+.nav-tabs  { display: flex; gap: .25rem; }
+.nav-tab {
+  font-size: .8rem; font-weight: 500; padding: .4rem .9rem; border-radius: 5px;
+  color: rgba(247,244,239,.6); transition: all .15s;
+}
+.nav-tab:hover { background: rgba(255,255,255,.08); color: var(--paper); }
+.nav-tab.active { background: rgba(255,255,255,.1); color: var(--paper); font-weight: 600; }
+.nav-badge {
+  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
+  letter-spacing: .1em; text-transform: uppercase;
+  border: 1px solid rgba(200,75,49,.25); border-radius: 16px; padding: .2rem .6rem;
+  margin-left: auto;
+}
 
-        .tab {
-            padding: 1rem 2.5rem;
-            border: none;
-            background: var(--primary);
-            color: white;
-            font-size: 0.95rem;
-            font-weight: 500;
-            cursor: pointer;
-            border-right: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.2s;
-        }
+/* Search Bar */
+.search-container {
+  position: relative;
+  flex: 0 0 auto;
+  width: 280px;
+}
 
-        .tab:hover {
-            background: var(--primary-dark);
-        }
+.search-input {
+  width: 100%;
+  padding: .5rem .75rem;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.08);
+  color: var(--paper);
+  border-radius: 6px;
+  font-size: .8rem;
+  font-family: var(--sans);
+  transition: all .2s;
+}
 
-        .tab.active {
-            background: var(--primary-dark);
-            font-weight: 600;
-        }
+.search-input::placeholder {
+  color: rgba(247,244,239,.4);
+}
 
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            display: flex;
-            overflow: hidden;
-            height: calc(100vh - 140px);
-        }
+.search-input:focus {
+  outline: none;
+  background: rgba(255,255,255,.12);
+  border-color: var(--accent-2);
+}
 
-        /* Sidebar */
-        .sidebar {
-            width: 340px;
-            background: white;
-            border-right: 1px solid var(--border);
-            overflow-y: auto;
-            padding: 1.5rem;
-            flex-shrink: 0;
-        }
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--paper-3);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  display: none;
+  z-index: 1000;
+}
 
-        .content-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1.5rem;
-            background: var(--bg);
-        }
+.search-results.show {
+  display: block;
+}
 
-        /* Make cards scrollable */
-        .stats-row, .charts-grid, .map-card, .chart-card, .info-box {
-            margin-bottom: 1rem;
-        }
+.search-result-item {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--paper-2);
+  cursor: pointer;
+  transition: background .15s;
+}
 
-        .map-wrapper {
-            height: 600px; /* Fixed map height */
-            position: relative;
-        }
+.search-result-item:last-child {
+  border-bottom: none;
+}
 
-        .chart-wrapper {
-            height: 300px; /* Fixed chart height */
-            position: relative;
-        }
+.search-result-item:hover {
+  background: var(--paper-2);
+}
 
-        .info-section {
-            margin-bottom: 2rem;
-        }
+.search-result-address {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: .25rem;
+}
 
-        .info-section h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
+.search-result-details {
+  font-size: .7rem;
+  color: var(--ink-3);
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
 
-        .info-section p {
-            font-size: 0.875rem;
-            line-height: 1.6;
-            color: var(--text-light);
-            margin-bottom: 0.75rem;
-        }
+.search-result-badge {
+  display: inline-block;
+  padding: .15rem .4rem;
+  background: var(--paper-2);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .65rem;
+}
 
-        .info-section ul {
-            list-style: none;
-            padding-left: 0;
-        }
+.search-no-results {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: .8rem;
+}
 
-        .info-section li {
-            font-size: 0.875rem;
-            line-height: 1.8;
-            padding-left: 1.25rem;
-            position: relative;
-        }
+/* ─── Dashboard Layout ─────────────────────────────────────────────────────── */
+.dashboard {
+  display: none; flex: 1; overflow: hidden;
+  grid-template-columns: var(--left-width, 320px) 1fr var(--right-width, 280px);
+  grid-template-rows: 1fr;
+}
+.dashboard.active { display: grid; }
 
-        .info-section li:before {
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: var(--primary);
-            font-weight: bold;
-        }
+.dash-left, .dash-right {
+  display: flex; flex-direction: column; gap: .75rem;
+  padding: .75rem; overflow-y: auto;
+  background: var(--paper-2);
+  position: relative;
+  transition: margin-left .3s, margin-right .3s, opacity .3s;
+  min-width: 200px;
+  max-width: 600px;
+}
 
-        .scatter-chart-container {
-            margin-top: 2rem;
-            background: white;
-            padding: 1.5rem;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-        }
+.dash-center {
+  display: flex; flex-direction: column;
+  background: var(--paper);
+}
 
-        .scatter-chart-container h4 {
-            font-size: 0.875rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            text-align: center;
-        }
+/* Resize handles */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 10;
+}
 
-        .scatter-chart {
-            height: 250px;
-        }
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: var(--ink-3);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity .2s;
+}
 
-        /* Content Area */
-        .content-area {
-            overflow-y: auto;
-            background: var(--bg);
-            padding: 2rem;
-        }
+.resize-handle:hover::before {
+  opacity: 0.4;
+}
 
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
+.resize-handle.resizing::before {
+  opacity: 0.6;
+}
 
-        .stat-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
+.dash-left .resize-handle {
+  right: 0;
+}
 
-        .stat-icon {
-            font-size: 48px;
-            margin-bottom: 1rem;
-        }
+.dash-right .resize-handle {
+  left: 0;
+}
 
-        .stat-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--primary);
-            font-family: 'JetBrains Mono', monospace;
-        }
+.sidebar-toggle {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: var(--paper); color: var(--ink);
+  font-size: 1.2rem; font-weight: 600;
+  padding: .5rem .25rem; border-radius: 4px;
+  box-shadow: var(--shadow);
+  z-index: 5;
+  transition: background .2s;
+}
+.sidebar-toggle:hover { background: var(--paper-3); }
+.dash-left .sidebar-toggle { right: -10px; }
+.dash-right .sidebar-toggle { left: -10px; }
 
-        .stat-label {
-            font-size: 0.875rem;
-            color: var(--text-light);
-            margin-top: 0.5rem;
-        }
+/* ─── Stats Strip ──────────────────────────────────────────────────────────── */
+.stats-strip {
+  display: flex; gap: 1px; background: var(--paper-3);
+  border-bottom: 1px solid var(--paper-3);
+}
+.stat-card {
+  flex: 1; padding: 1rem 1.25rem;
+  background: var(--paper); display: flex; flex-direction: column;
+}
+.stat-lbl {
+  font-size: .7rem; color: var(--ink-3); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: .3rem; font-weight: 500;
+}
+.stat-val {
+  font-family: var(--mono); font-size: 1.3rem; font-weight: 600;
+  color: var(--ink); margin-bottom: .2rem;
+}
+.stat-delta {
+  font-size: .75rem; font-weight: 600;
+  font-family: var(--mono);
+}
+.stat-delta.up { color: #059669; }
+.stat-delta.down { color: #dc2626; }
 
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
+/* ─── Map Container ────────────────────────────────────────────────────────── */
+.map-wrap {
+  flex: 1; position: relative; overflow: hidden;
+}
+.map-container {
+  position: absolute; inset: 0;
+}
+.map-toolbar {
+  position: absolute; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: .75rem;
+  background: rgba(255,255,255,.95); backdrop-filter: blur(10px);
+  padding: .5rem 1rem; border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+}
+.map-badge {
+  font-family: var(--mono); font-size: .7rem; color: var(--ink-2);
+  letter-spacing: .08em; text-transform: uppercase; font-weight: 500;
+}
+.filter-toggle-btn {
+  font-size: .75rem; padding: .35rem .75rem;
+  background: var(--paper-2); color: var(--ink);
+  border-radius: 4px; font-weight: 500;
+  transition: all .15s;
+}
+.filter-toggle-btn:hover { background: var(--paper-3); }
+.filter-toggle-btn.active { background: var(--accent); color: white; }
 
-        .chart-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
+/* ─── Panel Sections ───────────────────────────────────────────────────────── */
+.panel-section {
+  background: white; border-radius: var(--card-r);
+  padding: .75rem; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  flex-shrink: 0;
+}
+.panel-heading {
+  font-size: .75rem; font-weight: 600; color: var(--ink-2);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: .6rem;
+  flex-shrink: 0;
+}
+.sym-select {
+  width: 100%; padding: .5rem; border-radius: 6px;
+  border: 1px solid var(--paper-3);
+  font-size: .8rem; font-family: var(--sans);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer;
+}
 
-        .chart-card.full-width {
-            grid-column: 1 / -1;
-        }
+/* ─── Legend ───────────────────────────────────────────────────────────────── */
+.legend-list {
+  display: flex; flex-direction: column; gap: .35rem;
+  max-height: 180px; overflow-y: auto;
+}
+.legend-item {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .7rem; color: var(--ink-2);
+}
+.legend-swatch {
+  width: 12px; height: 12px; border-radius: 2px;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,.1);
+}
+.legend-ramp {
+  display: flex; height: 20px; border-radius: 4px; overflow: hidden;
+  border: 1px solid rgba(0,0,0,.1);
+}
+.legend-ramp-seg {
+  flex: 1;
+}
+.legend-scale {
+  display: flex; justify-content: space-between;
+  font-size: .65rem; color: var(--ink-3);
+  margin-top: .25rem;
+}
 
-        .chart-card h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
+/* ─── Charts (D3) ──────────────────────────────────────────────────────────── */
+.chart-wrap {
+  position: relative;
+  height: 160px;
+  margin-top: .5rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.chart-wrap.tall {
+  height: 220px;
+}
+.scatter-controls {
+  display: flex; gap: .35rem; margin-bottom: .5rem;
+  flex-shrink: 0;
+}
+.scatter-btn {
+  flex: 1; padding: .4rem; font-size: .7rem;
+  background: var(--paper-2); color: var(--ink-2);
+  border-radius: 4px; font-weight: 500;
+  transition: all .15s;
+}
+.scatter-btn:hover { background: var(--paper-3); }
+.scatter-btn.active { background: var(--accent); color: white; }
+.scatter-wrap {
+  position: relative;
+  height: 280px;
+  background: white; border-radius: 8px;
+  border: 1px solid var(--paper-3);
+  flex-shrink: 0;
+  overflow: hidden;
+}
 
-        .chart-wrapper {
-            height: 350px;
-            position: relative;
-        }
+/* D3 Chart Styles */
+.d3-chart svg {
+  width: 100%;
+  height: 100%;
+  font-family: var(--sans);
+}
+.d3-chart .axis text {
+  fill: var(--ink-3);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.d3-chart .axis line,
+.d3-chart .axis path {
+  stroke: var(--paper-3);
+}
+.d3-chart .grid line {
+  stroke: var(--paper-3);
+  stroke-opacity: 0.3;
+}
+.d3-chart .bar {
+  transition: opacity .2s;
+  cursor: pointer;
+}
+.d3-chart .bar:hover {
+  opacity: 0.8;
+}
+.d3-chart .dot {
+  transition: r .2s, opacity .2s;
+  cursor: pointer;
+}
+.d3-chart .dot:hover {
+  r: 6;
+  stroke-width: 2;
+}
 
-        .tab-content {
-            display: none;
-            grid-template-columns: 400px 1fr;
-            flex: 1;
-        }
+/* D3 Tooltip */
+.d3-tooltip {
+  position: absolute;
+  background: rgba(26,26,46,0.95);
+  color: #f7f4ef;
+  padding: 0.75rem;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  z-index: 1000;
+  max-width: 250px;
+}
+.d3-tooltip.show {
+  opacity: 1;
+}
 
-        .tab-content.active {
-            display: grid;
-        }
+/* ─── Parcel Detail ────────────────────────────────────────────────────────── */
+.prop-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 2rem; text-align: center; color: var(--ink-3);
+}
+.ph-icon {
+  font-size: 2rem; margin-bottom: .5rem; opacity: .3;
+}
+.prop-detail {
+  display: flex; flex-direction: column; gap: .4rem;
+}
+.prop-addr {
+  font-weight: 600; font-size: .85rem; color: var(--ink);
+  margin-bottom: .4rem; line-height: 1.3;
+}
+.prop-change {
+  font-family: var(--mono); font-size: .75rem; font-weight: 600;
+  padding: .2rem .5rem; border-radius: 4px; display: inline-block;
+}
+.prop-change.up { background: #d1fae5; color: #065f46; }
+.prop-change.down { background: #fee2e2; color: #991b1b; }
+.prop-row {
+  display: flex; justify-content: space-between; gap: .75rem;
+  padding: .35rem 0; border-bottom: 1px solid var(--paper-2);
+}
+.prop-row:last-child { border-bottom: none; }
+.prop-row-label {
+  font-size: .7rem; color: var(--ink-3); font-weight: 500;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.prop-row-value {
+  font-size: .75rem; color: var(--ink); font-weight: 500;
+  text-align: right;
+}
 
-        .info-box {
-            background: #fffbeb;
-            border-left: 4px solid #f59e0b;
-            padding: 1rem;
-            margin-bottom: 2rem;
-            font-size: 0.875rem;
-            line-height: 1.6;
-        }
-
-        .map-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            height: 500px;
-            display: flex;
-            flex-direction: column;
-            margin-bottom: 2rem;
-        }
-
-        .map-wrapper {
-            flex: 1;
-            position: relative;
-            background: #e0e7ed;
-            border: 1px solid var(--border);
-        }
-
-        #residentialMap,
-        #condoMap,
-        #commercialMap,
-        #vacantMap {
-            width: 100%;
-            height: 100%;
-        }
-
-        /* Responsive */
-        @media (max-width: 1024px) {
-            .main-content {
-                grid-template-columns: 350px 1fr;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .main-content,
-            .tab-content.active {
-                grid-template-columns: 1fr;
-            }
-            
-            .sidebar {
-                display: none;
-            }
-        }
-    </style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1400px) {
+  .landing-hero { flex-direction: column; padding: 3rem 2rem; gap: 3rem; }
+  .hero-text { flex: none; max-width: 100%; }
+  .hero-stats { max-height: none; }
+}
+@media (max-width: 900px) {
+  .landing-features { flex-direction: column; gap: 2rem; }
+  .dashboard { grid-template-columns: 1fr !important; }
+  .dash-left, .dash-right { display: none; }
+}
+</style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="header">
-            <div class="logo">🏛️</div>
-            <div class="header-title">
-                <h1>What affects my assessment value?</h1>
-                <p>Click a property category to learn more</p>
-            </div>
-            <button class="home-btn">🏠</button>
-        </header>
 
-        <!-- Tabs -->
-        <div class="tabs-container">
-            <button class="tab active" onclick="switchTab(event, 'residential')">Residential</button>
-            <button class="tab" onclick="switchTab(event, 'condo')">Condo</button>
-            <button class="tab" onclick="switchTab(event, 'commercial')">Commercial</button>
-            <button class="tab" onclick="switchTab(event, 'vacant')">Vacant</button>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LOADING OVERLAY
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="loading-overlay">
+  <div class="loader-logo">Property Assessment Value</div>
+  <div class="loader-sub" id="loading-message">Initializing…</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LANDING PAGE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="landing" style="display:none">
+  <nav class="landing-nav">
+    <div class="landing-brand">Property Assessment Value</div>
+    <div class="landing-badge">Beta</div>
+  </nav>
+  
+  <div class="landing-hero">
+    <div class="hero-text">
+      <div class="hero-eyebrow">Property Assessment Value Platform</div>
+      <h1 class="hero-title">Explore current and prior year property assessments</h1>
+      <p class="hero-desc">
+        City of West Hartford
+      </p>
+      <button class="hero-cta" id="enter-btn">
+        Enter Dashboard
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M5 12h14m-7-7l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-value res-color" id="ls-res-total">—</div>
+        <div class="hero-stat-label">Residential Value</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value condo-color" id="ls-condo-total">—</div>
+        <div class="hero-stat-label">Condo Value</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value comm-color" id="ls-comm-total">—</div>
+        <div class="hero-stat-label">Commercial Value</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value vac-color" id="ls-vac-total">—</div>
+        <div class="hero-stat-label">Vacant Land Value</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="landing-features">
+    <div class="feature">
+      <div class="feature-icon">🗺️</div>
+      <div>
+        <div class="feature-title">Interactive Mapping</div>
+        <div class="feature-desc">Visualize parcels with dynamic symbolization and instant detail popups</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📊</div>
+      <div>
+        <div class="feature-title">Interactive D3 Charts</div>
+        <div class="feature-desc">All charts support zoom and pan — drag to explore your data</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎯</div>
+      <div>
+        <div class="feature-title">Smart Filtering</div>
+        <div class="feature-desc">Toggle between property types to focus on what matters most</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP SHELL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="app">
+  <!-- Top Navigation -->
+  <nav class="app-nav">
+    <div class="nav-brand">Property Assessment Value</div>
+    <div class="nav-sep"></div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="residential">Residential</button>
+      <button class="nav-tab" data-tab="condo">Condo</button>
+      <button class="nav-tab" data-tab="commercial">Commercial</button>
+      <button class="nav-tab" data-tab="vacant">Vacant Land</button>
+    </div>
+    <div class="search-container">
+      <input type="text" id="parcel-search" class="search-input" placeholder="Search address or parcel ID...">
+      <div id="search-results" class="search-results"></div>
+    </div>
+    <div class="nav-badge" id="ls-total-parcels">—</div>
+  </nav>
+
+  <!-- RESIDENTIAL TAB -->
+  <div id="dash-residential" class="dashboard active">
+    <div class="dash-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar('residential','left')">‹</button>
+      <div class="resize-handle" data-dashboard="residential" data-side="left"></div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Assessment vs. Size<span id="res-scatter-count"></span></div>
+        <div class="scatter-controls">
+          <button class="scatter-btn active" onclick="setScatterAxes('residential','sqft','assessed2022',this)">Living Area → Value</button>
+          <button class="scatter-btn" onclick="setScatterAxes('residential','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
         </div>
-
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- RESIDENTIAL TAB -->
-            <div id="residential-content" class="tab-content active">
-                <aside class="sidebar">
-                    <div class="info-section">
-                        <h3>Understanding Your Property Assessment Value</h3>
-                        <p>Property values are determined by analyzing a variety of factors that influence market demand and overall worth.</p>
-                        <ul>
-                            <li>Location</li>
-                            <li>Condition of the property</li>
-                            <li>Total living area</li>
-                            <li>Number of bedrooms</li>
-                            <li>Number of bathrooms</li>
-                        </ul>
-                    </div>
-
-                    <div class="scatter-chart-container">
-                        <h4>2025 Land Assessment Value vs. Acreage</h4>
-                        <div class="scatter-chart">
-                            <canvas id="residentialScatter"></canvas>
-                        </div>
-                    </div>
-                </aside>
-
-                <div class="content-area">
-                    <div class="stats-row">
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2020 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2025 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🏠</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Parcels Assessed</div>
-                        </div>
-                    </div>
-
-                    <div class="info-box">
-                        One factor of revaluation is <strong>neighborhoods</strong>, which are delineated based on physical, economic, environmental, and governmental influences.
-                    </div>
-
-                    <div class="map-card">
-                        <h3>Residential Properties by Neighborhood</h3>
-                        <div class="map-wrapper">
-                            <div id="residentialMap"></div>
-                        </div>
-                    </div>
-
-                    <div class="chart-card full-width">
-                        <h3>Average Building Assessment by Design</h3>
-                        <div class="chart-wrapper">
-                            <canvas id="residentialDesignChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CONDO TAB -->
-            <div id="condo-content" class="tab-content">
-                <aside class="sidebar">
-                    <div class="info-section">
-                        <h3>Understanding Your Property Assessment Value</h3>
-                        <p>Property values are determined by analyzing a variety of factors in condo units.</p>
-                        <ul>
-                            <li>Unit location</li>
-                            <li>Condition of the property</li>
-                            <li>Total living area</li>
-                            <li>Style (condominium vs. townhouse)</li>
-                        </ul>
-                    </div>
-
-                    <div class="scatter-chart-container">
-                        <h4>2025 Assessed Value vs. Finished Area</h4>
-                        <div class="scatter-chart">
-                            <canvas id="condoScatter"></canvas>
-                        </div>
-                    </div>
-                    
-                </aside>
-
-                <div class="content-area">
-                    <div class="stats-row">
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2020 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2025 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🏢</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Parcels Assessed</div>
-                        </div>
-                    </div>
-                    <div class="map-card">
-                            <h3>Condo Properties</h3>
-                            <div class="map-wrapper">
-                                <div id="condoMap"></div>
-                            </div>
-                        </div>
-                    <div class="charts-grid">
-                        <div class="chart-card">
-                            <h3>2025 Average Value by Style</h3>
-                            <div class="chart-wrapper">
-                                <canvas id="condoStyleChart"></canvas>
-                            </div>
-                        </div>
-                        <div class="chart-card">
-                            <h3>Unit Location Distribution</h3>
-                            <div class="chart-wrapper">
-                                <canvas id="condoLocationChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- COMMERCIAL TAB -->
-            <div id="commercial-content" class="tab-content">
-                <aside class="sidebar">
-                    <div class="info-section">
-                        <h3>Understanding Your Property Assessment Value</h3>
-                        <p>Commercial property values vary based on multiple factors.</p>
-                        <ul>
-                            <li>Location</li>
-                            <li>Total finished area</li>
-                            <li>Zone</li>
-                            <li>Building use</li>
-                            <li>Material class</li>
-                        </ul>
-                    </div>
-
-                    <div class="scatter-chart-container">
-                        <h4>Building Value vs. Finished Area</h4>
-                        <div class="scatter-chart">
-                            <canvas id="commercialScatter"></canvas>
-                        </div>
-                    </div>
-                </aside>
-
-                <div class="content-area">
-                    <div class="stats-row">
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2020 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2025 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🏢</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Parcels Assessed</div>
-                        </div>
-                    </div>
-
-                    <div class="charts-grid">
-                        <div class="chart-card">
-                            <h3>Building Assessment by Class</h3>
-                            <div class="chart-wrapper">
-                                <canvas id="commercialClassChart"></canvas>
-                            </div>
-                        </div>
-
-                        <div class="chart-card">
-                            <h3>Use Category Distribution</h3>
-                            <div class="chart-wrapper">
-                                <canvas id="commercialUseChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="map-card">
-                        <h3>Commercial Properties</h3>
-                        <div class="map-wrapper">
-                            <div id="commercialMap"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- VACANT TAB -->
-            <div id="vacant-content" class="tab-content">
-                <aside class="sidebar">
-                    <div class="info-section">
-                        <h3>Understanding Your Property Assessment Value</h3>
-                        <p>Vacant property values depend on:</p>
-                        <ul>
-                            <li>Location</li>
-                            <li>Total acreage</li>
-                            <li>Zone</li>
-                            <li>Primary use</li>
-                        </ul>
-                    </div>
-
-                    <div class="scatter-chart-container">
-                        <h4>Assessment Value vs. Acreage</h4>
-                        <div class="scatter-chart">
-                            <canvas id="vacantScatter"></canvas>
-                        </div>
-                    </div>
-                </aside>
-
-                <div class="content-area">
-                    <div class="stats-row">
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2020 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💲</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Total 2025 Assessment</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🏞️</div>
-                            <div class="stat-value">Loading...</div>
-                            <div class="stat-label">Parcels Assessed</div>
-                        </div>
-                    </div>
-
-                    <div class="chart-card full-width">
-                        <h3>Primary Use Distribution</h3>
-                        <div class="chart-wrapper">
-                            <canvas id="vacantUseChart"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="map-card">
-                        <h3>Vacant Properties</h3>
-                        <div class="map-wrapper">
-                            <div id="vacantMap"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="scatter-wrap">
+          <div id="resScatter" class="d3-chart"></div>
         </div>
+      </div>
+      <!-- Residential only: Mean Assessment by Architectural Style -->
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Mean Assessment by Architectural Style</div>
+        <div class="chart-wrap tall">
+          <div id="resStyleMeanChart" class="d3-chart"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-center">
+      <div class="stats-strip">
+        <div class="stat-card">
+          <div class="stat-lbl">2022 Assessed Total</div>
+          <div class="stat-val" id="res-total25">—</div>
+          <div class="stat-delta" id="res-delta">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">2020 Assessed Total</div>
+          <div class="stat-val" id="res-total20">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Parcels</div>
+          <div class="stat-val" id="res-count">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Avg Value 2022</div>
+          <div class="stat-val" id="res-avg">—</div>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="residentialMap" class="map-container"></div>
+        <div class="map-toolbar">
+          <div class="map-badge">Residential Parcels</div>
+          <button class="filter-toggle-btn" id="residential-filter-btn" onclick="toggleParcelFilter('residential')">Show All Parcels</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-right">
+      <div class="resize-handle" data-dashboard="residential" data-side="right"></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar('residential','right')">›</button>
+      <div class="panel-section">
+        <div class="panel-heading">Symbolize By</div>
+        <select class="sym-select" id="residential-sym" onchange="changeMapSymbolization(residentialMap,'residential',this.value)">
+          <option value="Zone">Zone</option>
+          <option value="Property Type">Property Type</option>
+          <option value="Assessed Total">2022 Assessment Value</option>
+          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
+          <option value="Effective Year Built">Year Built</option>
+          <option value="Neighborhood">Neighborhood</option>
+          <option value="Style Description">Architectural Style</option>
+        </select>
+        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
+        <div id="res-legend" class="legend-list"></div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-heading">Selected Parcel</div>
+        <div id="res-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONDO TAB -->
+  <div id="dash-condo" class="dashboard">
+    <div class="dash-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar('condo','left')">‹</button>
+      <div class="resize-handle" data-dashboard="condo" data-side="left"></div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Assessment vs. Size<span id="condo-scatter-count"></span></div>
+        <div class="scatter-controls">
+          <button class="scatter-btn active" onclick="setScatterAxes('condo','sqft','assessed2022',this)">Living Area → Value</button>
+          <button class="scatter-btn" onclick="setScatterAxes('condo','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+        </div>
+        <div class="scatter-wrap">
+          <div id="condoScatter" class="d3-chart"></div>
+        </div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Neighborhood Distribution</div>
+        <div class="chart-wrap">
+          <div id="condoNeighborhoodChart" class="d3-chart"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-center">
+      <div class="stats-strip">
+        <div class="stat-card">
+          <div class="stat-lbl">2022 Assessed Total</div>
+          <div class="stat-val" id="condo-total25">—</div>
+          <div class="stat-delta" id="condo-delta">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">2020 Assessed Total</div>
+          <div class="stat-val" id="condo-total20">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Parcels</div>
+          <div class="stat-val" id="condo-count">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Avg Value 2022</div>
+          <div class="stat-val" id="condo-avg">—</div>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="condoMap" class="map-container"></div>
+        <div class="map-toolbar">
+          <div class="map-badge">Condo Parcels</div>
+          <button class="filter-toggle-btn" id="condo-filter-btn" onclick="toggleParcelFilter('condo')">Show All Parcels</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-right">
+      <div class="resize-handle" data-dashboard="condo" data-side="right"></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar('condo','right')">›</button>
+      <div class="panel-section">
+        <div class="panel-heading">Symbolize By</div>
+        <select class="sym-select" id="condo-sym" onchange="changeMapSymbolization(condoMap,'condo',this.value)">
+          <option value="Zone">Zone</option>
+          <option value="Property Type">Property Type</option>
+          <option value="Assessed Total">2022 Assessment Value</option>
+          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
+          <option value="Effective Year Built">Year Built</option>
+          <option value="Neighborhood">Neighborhood</option>
+        </select>
+        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
+        <div id="condo-legend" class="legend-list"></div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">State Use Description</div>
+        <div class="chart-wrap tall">
+          <div id="condoStateUseChart" class="d3-chart"></div>
+        </div>
+        
+      </div>
+      <div class="panel-section">
+        <div class="panel-heading">Selected Parcel</div>
+        <div id="condo-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMMERCIAL TAB -->
+  <div id="dash-commercial" class="dashboard">
+    <div class="dash-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar('commercial','left')">‹</button>
+      <div class="resize-handle" data-dashboard="commercial" data-side="left"></div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Assessment vs. Size<span id="commercial-scatter-count"></span></div>
+        <div class="scatter-controls">
+          <button class="scatter-btn active" onclick="setScatterAxes('commercial','sqft','assessed2022',this)">Living Area → Value</button>
+          <button class="scatter-btn" onclick="setScatterAxes('commercial','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
+        </div>
+        <div class="scatter-wrap">
+          <div id="commercialScatter" class="d3-chart"></div>
+        </div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Zone Distribution</div>
+        <div class="chart-wrap">
+          <div id="commercialClassChart" class="d3-chart"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-center">
+      <div class="stats-strip">
+        <div class="stat-card">
+          <div class="stat-lbl">2022 Assessed Total</div>
+          <div class="stat-val" id="commercial-total25">—</div>
+          <div class="stat-delta" id="commercial-delta">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">2020 Assessed Total</div>
+          <div class="stat-val" id="commercial-total20">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Parcels</div>
+          <div class="stat-val" id="commercial-count">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Avg Value 2022</div>
+          <div class="stat-val" id="commercial-avg">—</div>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="commercialMap" class="map-container"></div>
+        <div class="map-toolbar">
+          <div class="map-badge">Commercial Parcels</div>
+          <button class="filter-toggle-btn" id="commercial-filter-btn" onclick="toggleParcelFilter('commercial')">Show All Parcels</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-right">
+      <div class="resize-handle" data-dashboard="commercial" data-side="right"></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar('commercial','right')">›</button>
+      <div class="panel-section">
+        <div class="panel-heading">Symbolize By</div>
+        <select class="sym-select" id="commercial-sym" onchange="changeMapSymbolization(commercialMap,'commercial',this.value)">
+          <option value="Zone">Zone</option>
+          <option value="Property Type">Property Type</option>
+          <option value="Assessed Total">2022 Assessment Value</option>
+          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
+          <option value="State Use Description">State Use</option>
+        </select>
+        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
+        <div id="commercial-legend" class="legend-list"></div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">State Use Description</div>
+        <div class="chart-wrap tall">
+          <div id="commercialStateUseChart" class="d3-chart"></div>
+        </div>
+      </div>
+      <div class="panel-section">
+      <div class="panel-heading">Style Description</div>
+      <div class="chart-wrap tall">
+        <div id="commercialStyleChart" class="d3-chart"></div>
+      </div>
     </div>
 
-    <!-- Loading Overlay - Visible by default -->
-    <div id="loading-overlay" style="
-        display: flex;
-        position: fixed;
-        inset: 0;
-        background: rgba(245,245,245,0.98);
-        z-index: 9999;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 1.5rem;">
-        <div style="
-            width: 48px; height: 48px;
-            border: 5px solid #dddddd;
-            border-top-color: #6b8cae;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;">
-        </div>
-        <p id="loading-message" style="
-            font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 1rem;
-            color: #333;
-            font-weight: 500;">
-            Loading application...
-        </p>
-        <p style="
-            font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 0.75rem;
-            color: #666;
-            max-width: 350px;
-            text-align: center;
-            line-height: 1.5;">
-            Loading from self-hosted libraries...<br>
-            This should take just a few seconds!
-        </p>
+      <div class="panel-section">
+        <div class="panel-heading">Selected Parcel</div>
+        <div id="commercial-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
+      </div>
     </div>
-    <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
+  </div>
 
-    <!-- File Picker Overlay (shown when parcels.parquet not found automatically) -->
-    <div id="file-picker-overlay" style="
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(245,245,245,0.96);
-        z-index: 9998;
-        align-items: center;
-        justify-content: center;">
-        <div style="
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.15);
-            padding: 2.5rem;
-            max-width: 440px;
-            width: 90%;
-            text-align: center;
-            font-family: 'IBM Plex Sans', sans-serif;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">🗺️</div>
-            <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem;">
-                Load Your Parcel Data
-            </h2>
-            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.6;">
-                Select your <strong>GeoParquet</strong> file (.parquet) containing
-                all property parcels. The app will process it directly in your browser.
-            </p>
-            <label for="parquet-file-input" style="
-                display: inline-block;
-                padding: 0.75rem 1.5rem;
-                background: #6b8cae;
-                color: white;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: 600;
-                font-size: 0.95rem;
-                transition: background 0.2s;">
-                📂 Choose Parquet File
-            </label>
-            <input id="parquet-file-input"
-                type="file"
-                accept=".parquet"
-                style="display: none;"
-                onchange="handleFileSelect(this)">
-            <p style="color: #aaa; font-size: 0.8rem; margin-top: 1.25rem;">
-                File is processed locally — nothing is uploaded to any server.
-            </p>
+  <!-- VACANT TAB -->
+  <div id="dash-vacant" class="dashboard">
+    <div class="dash-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar('vacant','left')">‹</button>
+      <div class="resize-handle" data-dashboard="vacant" data-side="left"></div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Assessment vs. Acreage<span id="vacant-scatter-count"></span></div>
+        <div class="scatter-controls">
+          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">Acres → Value</button>
+          <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
         </div>
+        <div class="scatter-wrap">
+          <div id="vacantScatter" class="d3-chart"></div>
+        </div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">State Use Distribution</div>
+        <div class="chart-wrap">
+          <div id="vacantUseChart" class="d3-chart"></div>
+        </div>
+      </div>
     </div>
+    
+    <div class="dash-center">
+      <div class="stats-strip">
+        <div class="stat-card">
+          <div class="stat-lbl">2022 Assessed Total</div>
+          <div class="stat-val" id="vacant-total25">—</div>
+          <div class="stat-delta" id="vacant-delta">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">2020 Assessed Total</div>
+          <div class="stat-val" id="vacant-total20">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Parcels</div>
+          <div class="stat-val" id="vacant-count">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Avg Value 2022</div>
+          <div class="stat-val" id="vacant-avg">—</div>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="vacantMap" class="map-container"></div>
+        <div class="map-toolbar">
+          <div class="map-badge">Vacant Land Parcels</div>
+          <button class="filter-toggle-btn" id="vacant-filter-btn" onclick="toggleParcelFilter('vacant')">Show All Parcels</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dash-right">
+      <div class="resize-handle" data-dashboard="vacant" data-side="right"></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar('vacant','right')">›</button>
+      <div class="panel-section">
+        <div class="panel-heading">Symbolize By</div>
+        <select class="sym-select" id="vacant-sym" onchange="changeMapSymbolization(vacantMap,'vacant',this.value)">
+          <option value="Zone">Zone</option>
+          <option value="Property Type">Property Type</option>
+          <option value="Assessed Total">2022 Assessment Value</option>
+          <option value="Land Acres">Acreage</option>
+          <option value="State Use Description">State Use</option>
+        </select>
+        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
+        <div id="vacant-legend" class="legend-list"></div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">State Use Description</div>
+        <div class="chart-wrap tall">
+          <div id="vacantStateUseChart" class="d3-chart"></div>
+        </div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-heading">Selected Parcel</div>
+        <div id="vacant-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
+      </div>
+    </div>
+  </div>
 
-    <!-- Self-hosted libraries (FAST - no CDN delay!) -->
-    <script src="libs/maplibre-gl.min.js"></script>
-    <script src="libs/pmtiles.min.js"></script>
-    <script src="libs/chart.umd.min.js"></script>
+</div><!-- #app -->
 
-    <!-- Main Application Script -->
-    <script type="module" src="app.js"></script>
+<script src="app.js"></script>
+
 </body>
 </html>
