@@ -19,6 +19,12 @@ let sidebarState = {
 };
 
 let showAllParcels = { residential: false, condo: false, commercial: false, vacant: false };
+// Active category filter per tab (null = no filter)
+let activeFilter = { residential: null, condo: null, commercial: null, vacant: null };
+// Track selected parcel per tab for persistent highlight
+let selectedParcelId = { residential: null, condo: null, commercial: null, vacant: null };
+// Map initialized flags for lazy init
+let mapInitialized = { residential: true, condo: false, commercial: false, vacant: false };
 
 const scatterAxes = {
   residential: { x: 'sqft', y: 'assessed2022' },
@@ -67,9 +73,14 @@ const SYMBOLIZATION_OPTIONS = [
 ];
 
 const mapSymbolization = { residential:'Zone', condo:'Zone', commercial:'Zone', vacant:'Zone' };
+// Per-type color cache for dynamic categorical fields (Neighborhood, Style Description, etc.)
+// Keyed as `type:field` → colors object. Keeps palette assignments stable per type.
+const categoricalColorCache = {};
+// Stores the last resolved opt object per type for use by the scatter legend
+const mapSymbolizationOpt = { residential:null, condo:null, commercial:null, vacant:null };
 
 const AXIS_LABELS = {
-  sqft:'Living Area (sf)', acreage:'Acreage (ac)', yearBuilt:'Year Built',
+  sqft:'Living Area (sf)', acreage:'Acreage (ac)', yearBuilt:'Effective Year Built',
   assessed2020:'2020 Assessment', assessed2022:'2022 Assessment'
 };
 
@@ -155,32 +166,15 @@ async function initializeMaps() {
   const mapConfig = { style:baseStyle, center:pmtilesCenter, zoom:pmtilesZoom, minZoom:10, maxZoom:18, attributionControl:true };
 
   try {
+    // Only initialize the residential map eagerly; others are lazy-initialized on first tab visit
     residentialMap = new maplibregl.Map({ ...mapConfig, container:'residentialMap' });
-    condoMap       = new maplibregl.Map({ ...mapConfig, container:'condoMap' });
-    commercialMap  = new maplibregl.Map({ ...mapConfig, container:'commercialMap' });
-    vacantMap      = new maplibregl.Map({ ...mapConfig, container:'vacantMap' });
-
-    await Promise.all([
-      new Promise(r => residentialMap.once('load', r)),
-      new Promise(r => condoMap.once('load', r)),
-      new Promise(r => commercialMap.once('load', r)),
-      new Promise(r => vacantMap.once('load', r))
-    ]);
-
+    await new Promise(r => residentialMap.once('load', r));
     addMapLayers(residentialMap, sourceLayerName);
-    addMapLayers(condoMap,       sourceLayerName);
-    addMapLayers(commercialMap,  sourceLayerName);
-    addMapLayers(vacantMap,      sourceLayerName);
+    attachMapHandlers(residentialMap, 'residential', sourceLayerName);
 
-    residentialMap.on('click','parcels-fill', e => showParcelDetail(e.features[0].properties,'residential'));
-    condoMap.on(      'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'condo'));
-    commercialMap.on( 'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'commercial'));
-    vacantMap.on(     'click','parcels-fill', e => showParcelDetail(e.features[0].properties,'vacant'));
-
-    [residentialMap,condoMap,commercialMap,vacantMap].forEach(m => {
-      m.on('mouseenter','parcels-fill', () => m.getCanvas().style.cursor = 'pointer');
-      m.on('mouseleave','parcels-fill', () => m.getCanvas().style.cursor = '');
-    });
+    // Store for lazy init of other maps
+    _mapConfig = { ...mapConfig };
+    _sourceLayerName = sourceLayerName;
 
     showLoading('Loading parcel data…');
 
@@ -206,9 +200,70 @@ async function initializeMaps() {
 
 function addMapLayers(map, sourceLayer = 'parcels') {
   map.addLayer({ id:'parcels-fill', type:'fill', source:'parcels', 'source-layer':sourceLayer,
-    paint:{ 'fill-color': colorExpr('Zone', SYMBOLIZATION_OPTIONS.find(o => o.value==='Zone')), 'fill-opacity':0.7 }});
+    paint:{
+      'fill-color': colorExpr('Zone', SYMBOLIZATION_OPTIONS.find(o => o.value==='Zone')),
+      'fill-opacity': ['case', ['boolean',['feature-state','hover'],false], 0.9, 0.7]
+    }
+  });
   map.addLayer({ id:'parcels-outline', type:'line', source:'parcels', 'source-layer':sourceLayer,
-    paint:{ 'line-color':'#fff', 'line-width':1, 'line-opacity':0.4 }});
+    paint:{
+      'line-color': ['case', ['boolean',['feature-state','selected'],false], '#FFD700',
+                    ['case', ['boolean',['feature-state','hover'],false], '#fff', '#fff']],
+      'line-width':  ['case', ['boolean',['feature-state','selected'],false], 3, 1],
+      'line-opacity':['case', ['boolean',['feature-state','selected'],false], 1.0, 0.4]
+    }
+  });
+}
+
+function attachMapHandlers(map, type, sourceLayer) {
+  let hoveredId = null;
+  const hoverPopup = new maplibregl.Popup({ closeButton:false, closeOnClick:false, className:'map-hover-popup' });
+
+  map.on('mousemove','parcels-fill', e => {
+    if (!e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const f = e.features[0];
+    const fid = f.id;
+    if (hoveredId !== null && hoveredId !== fid) {
+      map.setFeatureState({ source:'parcels', sourceLayer, id:hoveredId }, { hover:false });
+    }
+    hoveredId = fid;
+    if (hoveredId !== null) map.setFeatureState({ source:'parcels', sourceLayer, id:hoveredId }, { hover:true });
+    const p = f.properties;
+    const fmt = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+    const val = parseFloat(p['Assessed Total'])||0;
+    hoverPopup.setLngLat(e.lngLat)
+      .setHTML(`<div class="map-popup"><strong>${p['Property Address']||'Unknown'}</strong><br><span>${p['Neighborhood']||''} · ${p['Zone']||''}</span><br><span class="popup-val">${fmt(val)}</span></div>`)
+      .addTo(map);
+  });
+
+  map.on('mouseleave','parcels-fill', () => {
+    map.getCanvas().style.cursor = '';
+    if (hoveredId !== null) map.setFeatureState({ source:'parcels', sourceLayer, id:hoveredId }, { hover:false });
+    hoveredId = null;
+    hoverPopup.remove();
+  });
+
+  map.on('click','parcels-fill', e => {
+    const props = e.features[0].properties;
+    const pid = props['Parcel ID'] || '';
+    showParcelDetail(props, type);
+    setSelectedParcelHighlight(map, sourceLayer, pid, type);
+    selectedParcelId[type] = pid;
+  });
+}
+
+function setSelectedParcelHighlight(map, sourceLayer, parcelId, type) {
+  // Clear old selected state via feature-state (need parcel feature id)
+  // We use a GeoJSON overlay layer instead since pmtiles feature IDs may not be stable
+  if (map.getLayer('parcel-selected')) map.removeLayer('parcel-selected');
+  if (map.getSource('parcel-selected')) map.removeSource('parcel-selected');
+  if (!parcelId) return;
+  const features = map.querySourceFeatures('parcels',{ sourceLayer, filter:['==',['get','Parcel ID'],parcelId] });
+  if (!features.length) return;
+  map.addSource('parcel-selected',{ type:'geojson', data:{ type:'Feature', geometry:features[0].geometry, properties:{} }});
+  map.addLayer({ id:'parcel-selected', type:'line', source:'parcel-selected',
+    paint:{ 'line-color':'#FFD700', 'line-width':3, 'line-opacity':1 }});
 }
 
 async function collectParcelData(sourceLayer = 'parcels') {
@@ -252,11 +307,21 @@ async function collectParcelData(sourceLayer = 'parcels') {
     dataCollected[type] = true;
     const total2022 = parcels.reduce((s,p) => s + p.assessed2022, 0);
     const total2020 = parcels.reduce((s,p) => s + p.assessed2020, 0);
-    statsData[type] = { count:parcels.length, total2022, total2020 };
+    const vals2022 = parcels.map(p=>p.assessed2022).filter(v=>v>0).sort((a,b)=>a-b);
+    const mid = Math.floor(vals2022.length/2);
+    const median2022 = vals2022.length ? (vals2022.length%2===0 ? (vals2022[mid-1]+vals2022[mid])/2 : vals2022[mid]) : 0;
+    statsData[type] = { count:parcels.length, total2022, total2020, median2022 };
     updateStatsUI(type);
   });
 
   setTimeout(() => {
+    // Initialize mapSymbolizationOpt for each loaded type with default Zone symbolization
+    Object.keys(dataCollected).forEach(t => {
+      if (dataCollected[t]) {
+        const zoneOpt = SYMBOLIZATION_OPTIONS.find(o => o.value === 'Zone');
+        if (zoneOpt) mapSymbolizationOpt[t] = { ...zoneOpt };
+      }
+    });
     if (activeTab && parcelData[activeTab]?.length) updateScatter(activeTab);
     initializeSearch();
   }, 1500);
@@ -275,11 +340,16 @@ function updateStatsUI(type) {
   setText(p+'-total20', fmt(s.total2020));
   setText(p+'-count',   s.count.toLocaleString());
   setText(p+'-avg',     fmt(s.total2022/s.count));
+  // Median value
+  if (s.median2022 !== undefined) setText(p+'-median', fmt(s.median2022));
   const deltaEl = document.getElementById(p+'-delta');
   if (deltaEl && pct !== null) {
     deltaEl.textContent = `${up?'▲':'▼'} ${Math.abs(pct)}% vs 2020`;
     deltaEl.className = 'stat-delta ' + (up ? 'up' : 'down');
   }
+  // Update tab dot indicator
+  const tabEl = document.querySelector(`.nav-tab[data-tab="${type}"]`);
+  if (tabEl) tabEl.classList.add('data-ready');
 }
 
 function updateLandingStats() {
@@ -307,86 +377,169 @@ function showParcelDetail(props, type) {
   const pct = a20 > 0 ? ((a25-a20)/a20*100).toFixed(1) : null;
   const up  = pct !== null && parseFloat(pct) >= 0;
   const fmt = v => v > 0 ? '$'+Math.round(v).toLocaleString() : '—';
+  const FIELD_TIPS = {
+    'Frame Type': 'Structural framing material',
+    'State Use':  'Use category',
+    'Style':      'Architectural style',
+    'Zone':       'Zoning district',
+    'Eff. Year Built': 'Effective year built/renovated',
+  };
+  const changeFmt = v => v > 0 ? '+$'+Math.round(v).toLocaleString() : '-$'+Math.round(Math.abs(v)).toLocaleString();
   const rows = [
-    ['Owner',       props['Owner']],
-    ['Zone',        props['Zone']],
-    ['Neighborhood',props['Neighborhood']],
-    ['Style',       props['Style Description']],
-    ['Frame Type',  props['Frame Type']],
-    ['Year Built',  props['Effective Year Built']],
-    ['Living Area', props['Living Area'] ? Math.round(parseFloat(props['Living Area'])).toLocaleString()+' sf' : null],
-    ['Acres',       props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
-    ['Bedrooms',    props['Number of Bedroom']],
-    ['Bathrooms',   props['Number of Bathrooms']],
-    ['2022',        fmt(a25)],
-    ['2020',        fmt(a20)],
-  ].filter(([,v]) => v && v !== '0' && v !== '—');
+    ['Owner',          props['Owner']],
+    ['Zone',           props['Zone']],
+    ['Neighborhood',   props['Neighborhood']],
+    ['Style',          props['Style Description']],
+    ['Frame Type',     props['Frame Type']],
+    ['Eff. Year Built',props['Effective Year Built']],
+    ['Living Area',    props['Living Area'] ? Math.round(parseFloat(props['Living Area'])).toLocaleString()+' sf' : null],
+    ['Acres',          props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
+    ['Bedrooms',       props['Number of Bedroom']],
+    ['Bathrooms',      props['Number of Bathrooms']],
+    ['2022 Assessment',fmt(a25)],
+    ['2020 Assessment',fmt(a20)],
+    pct !== null ? ['Change', `${changeFmt(a25-a20)} (${up?'▲':'▼'}${Math.abs(pct)}%)`] : null,
+  ].filter(r => r && r[1] && r[1] !== '0' && r[1] !== '—');
   el.innerHTML = `<div class="prop-detail">
     <div class="prop-addr">${props['Property Address']||'Unknown'}</div>
     ${pct!==null?`<div style="margin-bottom:.6rem"><span class="prop-change ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(pct)}%</span></div>`:''}
-    ${rows.map(([l,v])=>`<div class="prop-row"><span class="prop-row-label">${l}</span><span class="prop-row-value">${v}</span></div>`).join('')}
+    ${rows.map(([l,v])=>{
+      const tip = FIELD_TIPS[l];
+      const lbl = tip ? `<span class="prop-row-label" title="${tip}">${l} <span class="field-tip">ⓘ</span></span>` : `<span class="prop-row-label">${l}</span>`;
+      return `<div class="prop-row">${lbl}<span class="prop-row-value">${v}</span></div>`;
+    }).join('')}
   </div>`;
+  // Scroll detail panel into view and briefly flash it
+  setTimeout(() => {
+    el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    el.classList.add('detail-flash');
+    setTimeout(() => el.classList.remove('detail-flash'), 600);
+  }, 50);
 }
 
 function colorExpr(field, opt, type) {
   if (!opt) return '#94a3b8';
   if (opt.type === 'categorical' && opt.colors) {
     const cases = [];
+    // Keys in our color map are always strings. Tile properties may be numeric (e.g. neighborhood codes),
+    // so coerce the feature property to string before matching.
     Object.entries(opt.colors).forEach(([val,color]) => { if (val!=='default') cases.push(val,color); });
-    return ['match',['get',field],...cases, opt.colors.default||'#94a3b8'];
+    return ['match', ['to-string', ['get', field]], ...cases, opt.colors.default||'#94a3b8'];
   }
   if (opt.type === 'continuous' && opt.colorRamp) {
     const ramp = opt.colorRamp;
-    let stops = [];
+    // Compute quantile breakpoints so each bin contains ~equal parcel count
+    const quantileBreaks = (vals, n) => {
+      const s = vals.slice().sort((a,b)=>a-b);
+      const breaks = [];
+      for (let i = 1; i < n; i++) breaks.push(s[Math.floor(i/n * s.length)]);
+      return breaks; // n-1 thresholds → n bins
+    };
+    let thresholds = [];
     if (type && parcelData[type]?.length) {
       const parcels = parcelData[type];
       if (field.includes('Year Built')) {
         const years = parcels.map(p=>p.yearBuilt).filter(y=>y>0);
-        if (years.length) {
-          const min=Math.min(...years), max=Math.max(...years), step=(max-min)/5;
-          stops=[min]; for(let i=1;i<5;i++) stops.push(Math.floor(min+step*i)); stops.push(max);
-        } else stops=[1900,1940,1960,1980,2000,2020,2026];
+        thresholds = years.length ? quantileBreaks(years, ramp.length) : [1930,1950,1970,1990,2010];
       } else if (field==='Land Acres') {
-        const acres=parcels.map(p=>p.acreage).filter(a=>a>0);
-        if (acres.length) { const s=acres.sort((a,b)=>a-b); stops=[0,s[Math.floor(s.length*.2)],s[Math.floor(s.length*.4)],s[Math.floor(s.length*.6)],s[Math.floor(s.length*.8)],s[s.length-1]]; }
-        else stops=[0,.25,.5,1,2,5];
+        const acres = parcels.map(p=>p.acreage).filter(a=>a>0);
+        thresholds = acres.length ? quantileBreaks(acres, ramp.length) : [0.1,0.25,0.5,1,2];
       } else {
-        const vals=parcels.map(p=>p.assessed2022).filter(v=>v>0);
-        if (vals.length) { const s=vals.sort((a,b)=>a-b); stops=[0,s[Math.floor(s.length*.2)],s[Math.floor(s.length*.4)],s[Math.floor(s.length*.6)],s[Math.floor(s.length*.8)],s[s.length-1]]; }
-        else stops=[0,100000,300000,600000,1000000,2000000];
+        const isPreYear = field === 'Pre Year Assessed Total';
+        const vals = parcels.map(p => isPreYear ? p.assessed2020 : p.assessed2022).filter(v=>v>0);
+        thresholds = vals.length ? quantileBreaks(vals, ramp.length) : [100000,250000,400000,600000,1000000];
       }
     } else {
-      if (field.includes('Year Built')) stops=[1900,1940,1960,1980,2000,2020];
-      else if (field==='Land Acres') stops=[0,.25,.5,1,2,5];
-      else stops=[0,100000,300000,600000,1000000,2000000];
+      if (field.includes('Year Built')) thresholds=[1930,1950,1970,1990,2010];
+      else if (field==='Land Acres') thresholds=[0.1,0.25,0.5,1,2];
+      else thresholds=[100000,250000,400000,600000,1000000];
     }
-    return ['interpolate',['linear'],['coalesce',['get',field],0],...stops.flatMap((s,i)=>[s,ramp[Math.min(i,ramp.length-1)]])];
+    // Store on opt so buildLegend can read them without recomputing
+    opt._thresholds = thresholds;
+    opt._field = field;
+    // MapLibre 'step': ['step', input, color_for_< t0, t0, color_for_>= t0, t1, color_for_>= t1, ...]
+    const stepArgs = [ramp[0]];
+    thresholds.forEach((t, i) => { stepArgs.push(Math.round(t), ramp[i+1] || ramp[ramp.length-1]); });
+    return ['step', ['to-number', ['coalesce',['get',field],0]], ...stepArgs];
   }
   return '#94a3b8';
 }
 
 window.changeMapSymbolization = function(map, type, field) {
   mapSymbolization[type] = field;
-  let opt = SYMBOLIZATION_OPTIONS.find(o => o.value === field);
-  if (!opt) opt = { value: field, type: 'categorical' };
-  if (opt.type === 'categorical' && !opt.colors) opt.colors = generateCategoricalColors(getUniqueValuesForField(type, field));
-  if (map.getLayer('parcels-fill')) map.setPaintProperty('parcels-fill','fill-color',colorExpr(field,opt,type));
+  // Work with a shallow copy so we never mutate the shared SYMBOLIZATION_OPTIONS entry
+  let baseOpt = SYMBOLIZATION_OPTIONS.find(o => o.value === field);
+  let opt = baseOpt ? { ...baseOpt } : { value: field, type: 'categorical' };
+  if (opt.type === 'categorical') {
+    const cacheKey = type + ':' + field;
+    if (!categoricalColorCache[cacheKey]) {
+      // Build fresh color map from this type's actual tile property values
+      categoricalColorCache[cacheKey] = generateCategoricalColors(getUniqueValuesForField(type, field));
+    }
+    // Always use per-type cache; pre-built colors (Zone, Property Type) take precedence
+    if (!opt.colors) opt.colors = categoricalColorCache[cacheKey];
+  }
+  if (map && map.getLayer('parcels-fill')) map.setPaintProperty('parcels-fill','fill-color',colorExpr(field,opt,type));
   buildLegend(field, opt, type);
+  // Link: if symbolization field matches an Aggregate By option, switch the bar chart too
+  const barSelectId = `${type === 'residential' ? 'res' : type}-bar-field`;
+  const barSel = document.getElementById(barSelectId);
+  if (barSel) {
+    const symToBar = { 'Neighborhood':'neighborhood', 'Style Description':'style', 'Zone':'zone', 'State Use Description':'stateUse' };
+    const barKey = symToBar[field];
+    if (barKey && Array.from(barSel.options).some(o => o.value === barKey)) {
+      barSel.value = barKey;
+      updateRightBarChart(type, barKey);
+    }
+  }
+  // Re-render scatter so dot colors reflect the new symbolization
+  if (type === activeTab) updateScatter(type);
+  // Expose opt on the symbolization state so scatter legend can read colors
+  mapSymbolizationOpt[type] = opt;
 };
 
 function getUniqueValuesForField(type, field) {
-  const parcels = parcelData[type]||[];
-  const values  = new Set();
-  const fieldMap = { 'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse' };
-  const dataField = fieldMap[field]||field;
-  parcels.forEach(p => { const v=p[dataField]; if(v && v!=='Unknown' && v!=='') values.add(v); });
+  // Primary source: parcel data objects (complete dataset, type-filtered)
+  // We use these as the canonical value set for color assignment.
+  // The match expression in colorExpr uses the raw tile property name (field),
+  // so values from parcel data must equal the tile property values exactly.
+  // The tile property names map directly to parcel data like so:
+  const fieldMap = { 'Neighborhood':'neighborhood', 'Style Description':'style', 'State Use Description':'stateUse', 'Zone':'zone', 'Property Type':'type', 'Frame Type':'frame' };
+  const dataField = fieldMap[field] || field;
+  const parcels = parcelData[type] || [];
+  const values = new Set();
+  parcels.forEach(p => {
+    const v = p[dataField];
+    if (v && v !== 'Unknown' && v !== '') values.add(String(v));
+  });
+  // Also pull from tile features in viewport — supplements with exact-casing from tiles
+  // in case parcel data strings differ subtly from tile property strings
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map = maps[type];
+  if (map && map.getSource('parcels')) {
+    const features = map.querySourceFeatures('parcels', { sourceLayer: _sourceLayerName });
+    features.forEach(f => {
+      const v = f.properties[field];
+      if (v && v !== 'Unknown' && v !== '') values.add(String(v));
+    });
+  }
   return Array.from(values).sort();
 }
 
 function generateCategoricalColors(values) {
   const colors = {};
-  values.forEach((val,i) => { colors[val]=CATEGORICAL_PALETTE[i%CATEGORICAL_PALETTE.length]; });
-  colors['default']='#BBBBBB';
+  values.forEach((val, i) => {
+    if (i < CATEGORICAL_PALETTE.length) {
+      colors[val] = CATEGORICAL_PALETTE[i];
+    } else {
+      // Generate additional distinct colors via golden-ratio hue spacing
+      const hue = Math.round((i * 137.508) % 360);
+      const sat = 55 + (i % 3) * 12;
+      const lit = 42 + (i % 2) * 10;
+      colors[val] = `hsl(${hue},${sat}%,${lit}%)`;
+    }
+  });
+  colors['default'] = '#BBBBBB';
   return colors;
 }
 
@@ -397,37 +550,66 @@ function buildLegend(field, opt, type) {
   el.innerHTML = '';
   if (!opt) return;
   if (opt.type==='categorical' && opt.colors) {
+    const LEGEND_MAX = 12;
     const entries = Object.entries(opt.colors).filter(([k])=>k!=='default');
-    if (entries.length>10) {
-      const parcels  = parcelData[type]||[];
-      const fieldMap = {'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse','Zone':'zone','Property Type':'type'};
-      const dataField= fieldMap[field]||field;
-      const counts={};
-      parcels.forEach(p=>{ const v=p[dataField]; if(v&&v!=='Unknown') counts[v]=(counts[v]||0)+1; });
-      entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count)
-        .forEach(({val,color})=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
-      if (entries.length>100) { const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<span style="color:var(--ink-3);font-style:italic">...and ${entries.length-10} more</span>`; el.appendChild(item); }
-    } else {
-      entries.forEach(([val,color])=>{ const item=document.createElement('div'); item.className='legend-item'; item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`; el.appendChild(item); });
+    const parcels  = parcelData[type]||[];
+    const fieldMap = {'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse','Zone':'zone','Property Type':'type'};
+    const dataField= fieldMap[field]||field;
+    const counts={};
+    parcels.forEach(p=>{ const v=p[dataField]; if(v&&v!=='Unknown') counts[String(v)]=(counts[String(v)]||0)+1; });
+    const sorted = entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count);
+    sorted.slice(0, LEGEND_MAX).forEach(({val,color})=>{
+      const item=document.createElement('div'); item.className='legend-item';
+      item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`;
+      el.appendChild(item);
+    });
+    if (sorted.length > LEGEND_MAX) {
+      const more=document.createElement('div'); more.className='legend-item legend-more';
+      more.innerHTML=`<span style="color:var(--ink-3);font-style:italic">↓ ${sorted.length-LEGEND_MAX} more (scroll)</span>`;
+      el.appendChild(more);
     }
   } else if (opt.type==='continuous') {
-    const ramp=opt.colorRamp||VALUE_RAMP;
-    const rampDiv=document.createElement('div'); rampDiv.className='legend-ramp';
-    ramp.forEach(color=>{ const seg=document.createElement('div'); seg.className='legend-ramp-seg'; seg.style.background=color; rampDiv.appendChild(seg); });
-    el.appendChild(rampDiv);
-    const parcels=parcelData[type]||[]; let labels;
-    if (opt.value.includes('Year Built')) {
-      const years=parcels.map(p=>p.yearBuilt).filter(y=>y>0);
-      labels=years.length?[Math.min(...years).toString(),Math.max(...years).toString()]:['1900','2020'];
-    } else if (opt.value==='Land Acres') {
-      const acres=parcels.map(p=>p.acreage).filter(a=>a>0);
-      labels=acres.length?['0 ac',acres.sort((a,b)=>a-b).slice(-1)[0].toFixed(1)+' ac']:['0 ac','5+ ac'];
+    const ramp = opt.colorRamp || VALUE_RAMP;
+    const thresholds = opt._thresholds || [];
+    const parcels = parcelData[type] || [];
+    const isYear   = opt.value && opt.value.includes('Year Built');
+    const isAcres  = opt.value === 'Land Acres';
+    const isPreYear = opt.value === 'Pre Year Assessed Total';
+    // Format a threshold value for display
+    const fmtThresh = v => {
+      if (isYear)  return Math.round(v).toString();
+      if (isAcres) return v < 1 ? v.toFixed(2)+' ac' : v.toFixed(1)+' ac';
+      return v >= 1e6 ? `$${(v/1e6).toFixed(2)}M` : v >= 1e3 ? `$${Math.round(v/1e3)}K` : `$${Math.round(v)}`;
+    };
+    // Build min/max from parcel data for first/last bin labels
+    let dataMin = 0, dataMax = 0;
+    if (isYear) {
+      const years = parcels.map(p=>p.yearBuilt).filter(y=>y>0);
+      dataMin = years.length ? Math.min(...years) : 1900;
+      dataMax = years.length ? Math.max(...years) : 2024;
+    } else if (isAcres) {
+      const acres = parcels.map(p=>p.acreage).filter(a=>a>0);
+      dataMin = 0;
+      dataMax = acres.length ? Math.max(...acres) : 5;
     } else {
-      const vals=parcels.map(p=>p.assessed2022).filter(v=>v>0);
-      if (vals.length) { const max=vals.sort((a,b)=>a-b).slice(-1)[0]; labels=['$0',max>=1e6?`$${(max/1e6).toFixed(1)}M`:`$${Math.round(max/1000)}K`]; }
-      else labels=['$0','$2M+'];
+      const vals = parcels.map(p => isPreYear ? p.assessed2020 : p.assessed2022).filter(v=>v>0);
+      dataMin = vals.length ? Math.min(...vals) : 0;
+      dataMax = vals.length ? Math.max(...vals) : 2000000;
     }
-    const scaleDiv=document.createElement('div'); scaleDiv.className='legend-scale'; scaleDiv.innerHTML=`<span>${labels[0]}</span><span>${labels[1]}</span>`; el.appendChild(scaleDiv);
+    // Build bin edges: [dataMin, t0, t1, ..., dataMax]
+    const edges = [dataMin, ...thresholds, dataMax];
+    // Render one swatch row per bin
+    ramp.forEach((color, i) => {
+      const lo = edges[i] !== undefined ? edges[i] : 0;
+      const hi = edges[i+1] !== undefined ? edges[i+1] : dataMax;
+      const rangeLabel = i === ramp.length - 1
+        ? `${fmtThresh(lo)}+`
+        : `${fmtThresh(lo)} – ${fmtThresh(hi)}`;
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<div class="legend-swatch" style="background:${color}"></div><span>${rangeLabel}</span>`;
+      el.appendChild(item);
+    });
   }
 }
 
@@ -438,10 +620,8 @@ function enterDashboard() {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
   setTimeout(() => {
-    [residentialMap,condoMap,commercialMap,vacantMap].forEach(m => m.resize());
-    ['residential','condo','commercial','vacant'].forEach(t => {
-      if (dataCollected[t]) updateChartsForType(t);
-    });
+    residentialMap.resize();
+    if (dataCollected['residential']) updateChartsForType('residential');
   }, 300);
 }
 
@@ -462,6 +642,32 @@ function initializeSearch() {
   });
   document.addEventListener('click', e => { if (!e.target.closest('.search-container')) searchResults.classList.remove('show'); });
   searchInput.addEventListener('click', e => { e.stopPropagation(); if (searchResults.children.length>0) searchResults.classList.add('show'); });
+  searchInput.setAttribute('role','combobox');
+  searchInput.setAttribute('aria-autocomplete','list');
+  searchResults.setAttribute('role','listbox');
+  // Keyboard nav: ↑↓ move, Enter selects, Escape dismisses
+  searchInput.addEventListener('keydown', e => {
+    const items = Array.from(searchResults.querySelectorAll('.search-result-item'));
+    const focused = searchResults.querySelector('.search-result-item.kb-focus');
+    const idx = focused ? items.indexOf(focused) : -1;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (focused) focused.classList.remove('kb-focus');
+      const next = items[Math.min(idx+1, items.length-1)];
+      if (next) { next.classList.add('kb-focus'); next.scrollIntoView({block:'nearest'}); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (focused) focused.classList.remove('kb-focus');
+      const prev = items[Math.max(idx-1, 0)];
+      if (prev) { prev.classList.add('kb-focus'); prev.scrollIntoView({block:'nearest'}); }
+    } else if (e.key === 'Enter') {
+      const target = focused || items[0];
+      if (target) { target.click(); }
+    } else if (e.key === 'Escape') {
+      searchResults.classList.remove('show');
+      searchInput.blur();
+    }
+  });
 }
 
 function performSearch(query) {
@@ -514,20 +720,14 @@ function selectParcel(parcelId, type) {
 
 function highlightParcelOnMap(parcelId, type) {
   const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const sourceLayerName = 'parcels';
   const map  = maps[type];
   if (!map) return;
-  if (map.getLayer('parcel-highlight')) map.removeLayer('parcel-highlight');
-  if (map.getSource('parcel-highlight')) map.removeSource('parcel-highlight');
-  const features = map.querySourceFeatures('parcels',{ sourceLayer:'parcels', filter:['==',['get','Parcel ID'],parcelId] });
+  setSelectedParcelHighlight(map, sourceLayerName, parcelId, type);
+  selectedParcelId[type] = parcelId;
+  const features = map.querySourceFeatures('parcels',{ sourceLayer:sourceLayerName, filter:['==',['get','Parcel ID'],parcelId] });
   if (!features.length) return;
-  const feature = features[0];
-  map.addSource('parcel-highlight',{ type:'geojson', data:{ type:'Feature', geometry:feature.geometry, properties:feature.properties }});
-  map.addLayer({ id:'parcel-highlight', type:'line', source:'parcel-highlight', paint:{ 'line-color':'#FFD700','line-width':4,'line-opacity':1 }});
-  map.fitBounds(getBBox(feature.geometry),{ padding:100, duration:1000 });
-  setTimeout(() => {
-    if (map.getLayer('parcel-highlight'))  map.removeLayer('parcel-highlight');
-    if (map.getSource('parcel-highlight')) map.removeSource('parcel-highlight');
-  }, 5000);
+  map.fitBounds(getBBox(features[0].geometry),{ padding:100, duration:1000 });
 }
 
 function getBBox(geometry) {
@@ -541,19 +741,49 @@ function getBBox(geometry) {
   return [[-180,-90],[180,90]];
 }
 
+// sourceLayerName captured at module scope for lazy init
+let _sourceLayerName = 'parcels';
+let _mapConfig = null;
+
+async function lazyInitMap(type) {
+  if (mapInitialized[type]) return;
+  mapInitialized[type] = true;
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const containers = { condo:'condoMap', commercial:'commercialMap', vacant:'vacantMap' };
+  if (!_mapConfig) return;
+  const map = new maplibregl.Map({ ..._mapConfig, container:containers[type] });
+  await new Promise(r => map.once('load', r));
+  if (type === 'condo')      condoMap      = map;
+  if (type === 'commercial') commercialMap = map;
+  if (type === 'vacant')     vacantMap     = map;
+  addMapLayers(map, _sourceLayerName);
+  attachMapHandlers(map, type, _sourceLayerName);
+  // Re-apply symbolization if already set — this also populates mapSymbolizationOpt[type]
+  window.changeMapSymbolization(map, type, mapSymbolization[type]||'Zone');
+  map.resize();
+}
+
 function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   document.querySelector(`.nav-tab[data-tab="${tab}"]`).classList.add('active');
   document.querySelectorAll('.dashboard').forEach(d => d.classList.remove('active'));
   document.getElementById(`dash-${tab}`).classList.add('active');
-  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
-  const map  = maps[tab];
-  if (map) setTimeout(() => map.resize(), 100);
-  if (dataCollected[tab]) {
-    updateChartsForType(tab);
-    if (scatterPending[tab]) { updateScatter(tab); scatterPending[tab]=false; }
-  }
+  lazyInitMap(tab).then(() => {
+    const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+    const map  = maps[tab];
+    if (map) setTimeout(() => map.resize(), 100);
+    if (dataCollected[tab]) {
+      updateChartsForType(tab);
+      if (scatterPending[tab]) { updateScatter(tab); scatterPending[tab]=false; }
+    }
+    // Restore selected parcel highlight
+    if (selectedParcelId[tab] && maps[tab]) {
+      setSelectedParcelHighlight(maps[tab], _sourceLayerName, selectedParcelId[tab], tab);
+    }
+    // Update filter chip
+    renderFilterChip(tab);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -564,10 +794,16 @@ function updateChartsForType(type) {
   const parcels = parcelData[type];
   if (!parcels?.length) return;
   setTimeout(() => {
-    // Residential left panel: beeswarm
-    if (type === 'residential') updateResBeeswarm(parcels);
-    // Condo left panel: beeswarm
-    if (type === 'condo') updateCondoBeeswarm(parcels);
+    // Residential left panel: only render the currently active beeswarm
+    if (type === 'residential') {
+      if (activeBeeswarm.residential === 'style') updateResBeeswarm(parcels);
+      else updateResBedroomBeeswarm(parcels);
+    }
+    // Condo left panel: only render the currently active beeswarm
+    if (type === 'condo') {
+      if (activeBeeswarm.condo === 'style') updateCondoBeeswarm(parcels);
+      else updateCondoBedroomBeeswarm(parcels);
+    }
     // Commercial left panel: zone bar chart
     if (type === 'commercial') updateCommercialZoneChart(parcels);
     // Right panel: read current dropdown and render
@@ -580,6 +816,44 @@ function updateChartsForType(type) {
   }, 100);
 }
 
+// Beeswarm toggle handlers
+const activeBeeswarm = { residential: 'style', condo: 'style' };
+
+window.switchResBeeswarm = function(mode, btn) {
+  activeBeeswarm.residential = mode;
+  btn.parentElement.querySelectorAll('.scatter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const labelEl = document.getElementById('res-beeswarm-label');
+  if (labelEl) labelEl.textContent = mode === 'style' ? 'by Style' : 'by Bedrooms';
+  const styleDiv   = document.getElementById('resBeeswarm');
+  const bedroomDiv = document.getElementById('resBeeswarmBedroom');
+  if (styleDiv)   styleDiv.style.display   = mode === 'style'    ? '' : 'none';
+  if (bedroomDiv) bedroomDiv.style.display = mode === 'bedrooms' ? '' : 'none';
+  // Render on demand — if container has no SVG yet, call the update function directly
+  const parcels = parcelData['residential'];
+  if (parcels?.length) {
+    if (mode === 'style') { if (!styleDiv?.querySelector('svg')) updateResBeeswarm(parcels); else styleDiv._renderFn?.(); }
+    else { if (!bedroomDiv?.querySelector('svg')) updateResBedroomBeeswarm(parcels); else bedroomDiv._renderFn?.(); }
+  }
+};
+
+window.switchCondoBeeswarm = function(mode, btn) {
+  activeBeeswarm.condo = mode;
+  btn.parentElement.querySelectorAll('.scatter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const labelEl = document.getElementById('condo-beeswarm-label');
+  if (labelEl) labelEl.textContent = mode === 'style' ? 'by Style' : 'by Bedrooms';
+  const styleDiv   = document.getElementById('condoBeeswarm');
+  const bedroomDiv = document.getElementById('condoBeeswarmBedroom');
+  if (styleDiv)   styleDiv.style.display   = mode === 'style'    ? '' : 'none';
+  if (bedroomDiv) bedroomDiv.style.display = mode === 'bedrooms' ? '' : 'none';
+  const cparcels = parcelData['condo'];
+  if (cparcels?.length) {
+    if (mode === 'style') { if (!styleDiv?.querySelector('svg')) updateCondoBeeswarm(cparcels); else styleDiv._renderFn?.(); }
+    else { if (!bedroomDiv?.querySelector('svg')) updateCondoBedroomBeeswarm(cparcels); else bedroomDiv._renderFn?.(); }
+  }
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // BEESWARM — residential left panel
 // Each dot = one parcel. Groups by architectural style along Y.
@@ -589,36 +863,58 @@ function updateChartsForType(type) {
 function updateResBeeswarm(parcels) {
   const container = document.getElementById('resBeeswarm');
   if (!container) return;
-  // Cap at top-N styles by count to keep the chart readable
   const MAX_GROUPS = 10;
   const counts = {};
   parcels.forEach(p => { if (p.style && p.style !== 'Unknown' && p.assessed2022 > 0) counts[p.style] = (counts[p.style]||0) + 1; });
   const topStyles = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, MAX_GROUPS).map(([s]) => s);
   const filtered = parcels.filter(p => topStyles.includes(p.style) && p.assessed2022 > 0);
-  // Sample down if huge — beeswarm with thousands of dots gets slow
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.residential));
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.residential, 'style'));
 }
-
+function updateResBedroomBeeswarm(parcels) {
+  const container = document.getElementById('resBeeswarmBedroom');
+  if (!container) return;
+  const MAX_GROUPS = 10;
+  const counts = {};
+  parcels.forEach(p => { if (p.bedrooms > 0 && p.assessed2022 > 0) counts[p.bedrooms] = (counts[p.bedrooms]||0) + 1; });
+  const topBeds = Object.entries(counts).sort((a,b) => parseInt(a[0])-parseInt(b[0])).slice(0, MAX_GROUPS).map(([s]) => parseInt(s));
+  const filtered = parcels.filter(p => topBeds.includes(p.bedrooms) && p.assessed2022 > 0);
+  const step = Math.max(1, Math.ceil(filtered.length / 600));
+  const sample = filtered.filter((_,i) => i % step === 0);
+  if (!sample.length) return;
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.residential, 'bedrooms'));
+}
 function updateCondoBeeswarm(parcels) {
   const container = document.getElementById('condoBeeswarm');
   if (!container) return;
-  // Cap at top-N styles by count to keep the chart readable
   const MAX_GROUPS = 10;
   const counts = {};
   parcels.forEach(p => { if (p.style && p.style !== 'Unknown' && p.assessed2022 > 0) counts[p.style] = (counts[p.style]||0) + 1; });
   const topStyles = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, MAX_GROUPS).map(([s]) => s);
   const filtered = parcels.filter(p => topStyles.includes(p.style) && p.assessed2022 > 0);
-  // Sample down if huge — beeswarm with thousands of dots gets slow
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.condo));
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.condo, 'style'));
+}
+function updateCondoBedroomBeeswarm(parcels) {
+  const container = document.getElementById('condoBeeswarmBedroom');
+  if (!container) return;
+  const MAX_GROUPS = 10;
+  const counts = {};
+  parcels.forEach(p => { if (p.bedrooms > 0 && p.assessed2022 > 0) counts[p.bedrooms] = (counts[p.bedrooms]||0) + 1; });
+  const topBeds = Object.entries(counts).sort((a,b) => parseInt(a[0])-parseInt(b[0])).slice(0, MAX_GROUPS).map(([s]) => parseInt(s));
+  const filtered = parcels.filter(p => topBeds.includes(p.bedrooms) && p.assessed2022 > 0);
+  const step = Math.max(1, Math.ceil(filtered.length / 600));
+  const sample = filtered.filter((_,i) => i % step === 0);
+  if (!sample.length) return;
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.condo, 'bedrooms'));
 }
 
-function renderBeeswarmInto(container, data, categories, color) {
+function renderBeeswarmInto(container, data, categories, color, groupKey) {
+  groupKey = groupKey || 'style';
   d3.select(container).selectAll('*').remove();
   const width  = container.clientWidth  || 340;
   const height = container.clientHeight || 340;
@@ -654,11 +950,10 @@ function renderBeeswarmInto(container, data, categories, color) {
   xAxisG.selectAll('text').style('font-size', fs+'px');
 
   // Y axis — category labels
-  const yAxisG = g.append('g').attr('class','axis');
   categories.forEach(cat => {
     const y = yScale(cat) + yScale.bandwidth() / 2;
     const maxChars = Math.floor(labelW / (fs * 0.58));
-    const label = cat.length > maxChars ? cat.slice(0, maxChars - 1) + '…' : cat;
+    const label = String(cat).length > maxChars ? String(cat).slice(0, maxChars - 1) + '…' : String(cat);
     g.append('text')
       .attr('x', -6).attr('y', y).attr('dy', '0.35em')
       .attr('text-anchor', 'end')
@@ -675,7 +970,7 @@ function renderBeeswarmInto(container, data, categories, color) {
   const nodes = data.map(d => ({
     ...d,
     _x: Math.min(d.assessed2022, xMax),
-    _ty: yScale(d.style) + bandwidth / 2,  // target y = band center
+    _ty: yScale(d[groupKey]) + bandwidth / 2,
   }));
 
   // Use force simulation to jitter Y within band, keeping X fixed
@@ -696,7 +991,7 @@ function renderBeeswarmInto(container, data, categories, color) {
 
   // Draw mean line per category
   categories.forEach(cat => {
-    const catVals = data.filter(d => d.style === cat).map(d => d.assessed2022);
+    const catVals = data.filter(d => String(d[groupKey]) === String(cat)).map(d => d.assessed2022);
     if (!catVals.length) return;
     const mean = catVals.reduce((a,b) => a+b, 0) / catVals.length;
     const mx = xScale(Math.min(mean, xMax));
@@ -708,7 +1003,12 @@ function renderBeeswarmInto(container, data, categories, color) {
       .attr('stroke-dasharray', '3,2');
   });
 
-  // Draw dots
+  // Draw dots with neighborhood color if available
+  const useNeighborhoodColor = (groupKey === 'neighborhood');
+  const neighborhoodValues = useNeighborhoodColor ? [...new Set(data.map(d => d.neighborhood).filter(Boolean))] : [];
+  const neighborhoodColorMap = {};
+  neighborhoodValues.forEach((n, i) => { neighborhoodColorMap[n] = CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length]; });
+
   g.selectAll('.bee-dot')
     .data(nodes)
     .enter().append('circle')
@@ -716,16 +1016,17 @@ function renderBeeswarmInto(container, data, categories, color) {
     .attr('cx', d => d.x)
     .attr('cy', d => d.y)
     .attr('r', dotR)
-    .attr('fill', color)
+    .attr('fill', d => useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color)
     .attr('fill-opacity', 0.45)
-    .attr('stroke', color)
+    .attr('stroke', d => useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color)
     .attr('stroke-width', 0.5)
     .attr('stroke-opacity', 0.6)
     .style('cursor', 'pointer')
     .on('mouseover', function(event, d) {
       d3.select(this).attr('r', dotR + 2).attr('fill-opacity', 0.9).attr('stroke-width', 1.5);
+      const groupLabel = groupKey === 'bedrooms' ? `Bedrooms: ${d[groupKey]}` : `${groupKey.charAt(0).toUpperCase()+groupKey.slice(1)}: ${d[groupKey]}`;
       tooltip.style('left', (event.pageX+10)+'px').style('top', (event.pageY-10)+'px').classed('show', true)
-        .html(`<strong>${d.address}</strong><br>Style: ${d.style}<br>2022 Value: ${fmtX(d.assessed2022)}`);
+        .html(`<strong>${d.address}</strong><br>${groupLabel}<br>Neighborhood: ${d.neighborhood}<br>2022 Value: ${fmtX(d.assessed2022)}`);
     })
     .on('mouseout', function() {
       d3.select(this).attr('r', dotR).attr('fill-opacity', 0.45).attr('stroke-width', 0.5);
@@ -766,7 +1067,7 @@ function updateCommercialZoneChart(parcels) {
   });
   const data = Object.entries(grouped).map(([label,{sum,count}]) => ({label, count, mean: sum/count})).sort((a,b) => b.mean - a.mean);
   if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
+  watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial, 'commercial', 'zone', activeFilter['commercial']?.field === 'zone' ? activeFilter['commercial']?.value : null));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -798,7 +1099,11 @@ window.updateRightBarChart = function(type, field) {
     .map(([label, { sum, count }]) => ({ label, count, mean: sum / count }))
     .sort((a, b) => b.mean - a.mean);
   if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS[type]));
+  // Update heading to clarify what bars measure
+  const headingId = `${type === 'residential' ? 'res' : type}-bar-heading`;
+  const headEl = document.getElementById(headingId);
+  if (headEl) headEl.textContent = 'Mean 2022 Assessment';
+  watchAndRender(container, () => renderBarInto(container, data, COLORS[type], type, field));
 };
 
 window.setScatterAxes = function(type, x, y, btn) {
@@ -815,10 +1120,14 @@ window.toggleSidebar = function(type, side) {
   if (!dashboard) return;
   const leftPanel  = dashboard.querySelector('.dash-left');
   const rightPanel = dashboard.querySelector('.dash-right');
-  if (side==='left'  && leftPanel)  leftPanel.style.marginLeft   = state.left  ? '-320px' : '0';
-  if (side==='right' && rightPanel) rightPanel.style.marginRight = state.right ? '-280px' : '0';
+  if (side==='left'  && leftPanel)  leftPanel.style.marginLeft   = state.left  ? `-${leftPanel.offsetWidth}px`  : '0';
+  if (side==='right' && rightPanel) rightPanel.style.marginRight = state.right ? `-${rightPanel.offsetWidth}px` : '0';
   const btn = side==='left' ? dashboard.querySelector('.dash-left .sidebar-toggle') : dashboard.querySelector('.dash-right .sidebar-toggle');
-  if (btn) btn.textContent = state[side] ? (side==='left'?'›':'‹') : (side==='left'?'‹':'›');
+  if (btn) {
+    const label = state[side] ? (side==='left'?'›':'‹') : (side==='left'?'‹':'›');
+    btn.textContent = label;
+    btn.setAttribute('aria-label', state[side] ? `Expand ${side} panel` : `Collapse ${side} panel`);
+  }
   const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
   const map  = maps[type];
   if (map) setTimeout(() => map.resize(), 350);
@@ -830,14 +1139,13 @@ window.toggleParcelFilter = function(type) {
   const map  = maps[type];
   if (!map || !map.getLayer('parcels-fill')) return;
   const btn = document.getElementById(`${type}-filter-btn`);
-  if (btn) { btn.textContent=showAllParcels[type]?'Show Only '+type.charAt(0).toUpperCase()+type.slice(1):'Show All Parcels'; btn.classList.toggle('active',showAllParcels[type]); }
-  let filterExpr;
-  if (showAllParcels[type]) { filterExpr=['all']; }
-  else if (type==='vacant')  filterExpr=['any',['==',['get','Property Type'],'Vacant'],['==',['get','Property Type'],'Vacant Land']];
-  else if (type==='condo')   filterExpr=['any',['==',['get','Property Type'],'Condo'],['==',['get','Property Type'],'Condominium']];
-  else                       filterExpr=['==',['get','Property Type'],type.charAt(0).toUpperCase()+type.slice(1)];
-  map.setFilter('parcels-fill',filterExpr);
-  map.setFilter('parcels-outline',filterExpr);
+  const typeLabel = type.charAt(0).toUpperCase()+type.slice(1);
+  if (btn) {
+    btn.textContent = showAllParcels[type] ? 'Showing all types' : 'Filter to '+typeLabel+' only';
+    btn.classList.toggle('active', showAllParcels[type]);
+  }
+  // If a bar filter is active, combine it with the type filter
+  applyMapFilter(type);
 };
 
 // ─── Resize handles ────────────────────────────────────────────────────────
@@ -883,7 +1191,7 @@ function watchAndRender(container, renderFn) {
 
 // ─── Scatter ───────────────────────────────────────────────────────────────
 function updateScatter(type) {
-  const parcels = parcelData[type];
+  const parcels = getFilteredParcels(type);
   const ax      = scatterAxes[type];
   const p       = STAT_PREFIX[type];
   const container = document.getElementById(p+'Scatter');
@@ -892,7 +1200,7 @@ function updateScatter(type) {
   const step   = Math.max(1, Math.ceil(raw.length/1000));
   const sample = raw.filter((_,i) => i%step===0);
   const countEl = document.getElementById(p+'-scatter-count');
-  if (countEl) countEl.textContent = ' ('+sample.length.toLocaleString()+' pts)';
+  if (countEl) countEl.textContent = ` (${sample.length.toLocaleString()} sampled)`;
   watchAndRender(container, () => renderScatterInto(container, type, sample, ax));
   scatterPending[type] = false;
 }
@@ -933,38 +1241,160 @@ function renderScatterInto(container, type, sample, ax) {
     .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.x]||ax.x);
   svg.append('text').attr('text-anchor','middle').attr('transform','rotate(-90)').attr('x',-(margin.top+iH/2)).attr('y',fs+1)
     .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.y]||ax.y);
+  // ── Color encoding setup ──────────────────────────────────────────────────
+  const symField = mapSymbolization[type];
+  const symOpt   = mapSymbolizationOpt[type] || SYMBOLIZATION_OPTIONS.find(o => o.value === symField);
+  // Categorical fields → color by category value
+  const dotFieldMap = { 'Neighborhood':'neighborhood','Style Description':'style',
+    'State Use Description':'stateUse','Zone':'zone','Property Type':'type' };
+  const dataField   = dotFieldMap[symField] || null;
+  const isCat       = symOpt && symOpt.type === 'categorical' && symOpt.colors && dataField;
+  // Continuous fields → color by quantile bin (same bins as map)
+  const isCont      = symOpt && symOpt.type === 'continuous' && symOpt.colorRamp;
+  const contFieldMap = {
+    'Assessed Total':'assessed2022', 'Pre Year Assessed Total':'assessed2020',
+    'Effective Year Built':'yearBuilt', 'Land Acres':'acreage'
+  };
+  const contDataField = contFieldMap[symField] || null;
+  // Build a D3 threshold scale from the same quantile breaks used for the map
+  let contScale = null;
+  if (isCont && contDataField && symOpt._thresholds?.length) {
+    contScale = d3.scaleThreshold()
+      .domain(symOpt._thresholds)
+      .range(symOpt.colorRamp);
+  }
+
+  function dotColor(d) {
+    if (d._outlier) return '#aaa';
+    if (isCat) {
+      const v = d[dataField];
+      const key = v !== undefined && v !== null ? String(v) : null;
+      return (key && symOpt.colors[key]) ? symOpt.colors[key] : (symOpt.colors['default'] || COLORS[type]);
+    }
+    if (isCont && contScale && contDataField) {
+      const v = d[contDataField];
+      return (v !== undefined && v !== null && v > 0) ? contScale(v) : '#ccc';
+    }
+    return COLORS[type];
+  }
+
   const dotR = Math.max(2,Math.min(4,width/80));
-  const dots = g.append('g').attr('class','dots');
+
+  // Clip path keeps dots inside the plot area while axes render freely outside it
+  const clipId = 'scatter-clip-' + Math.random().toString(36).slice(2,7);
+  svg.append('defs').append('clipPath').attr('id', clipId)
+    .append('rect').attr('x',-dotR).attr('y',-dotR).attr('width',iW+dotR*2).attr('height',iH+dotR*2);
+
+  const dots = g.append('g').attr('class','dots').attr('clip-path',`url(#${clipId})`);
   dots.selectAll('circle').data(clipped).enter().append('circle')
     .attr('class','dot').attr('cx',d=>xScale(d._cx)).attr('cy',d=>yScale(d._cy))
     .attr('r',d=>d._outlier ? dotR*0.7 : dotR)
-    .attr('fill',d=>d._outlier ? '#aaa' : COLORS[type])
+    .attr('fill',d=>dotColor(d))
     .attr('fill-opacity',d=>d._outlier ? 0.25 : 0.5)
-    .attr('stroke',d=>d._outlier ? '#aaa' : COLORS[type]).attr('stroke-width',1)
+    .attr('stroke',d=>dotColor(d)).attr('stroke-width',1)
     .on('mouseover', function(event,d) {
       d3.select(this).attr('r',dotR+2).attr('fill-opacity',0.9).attr('stroke-width',2);
       const xVal = isYearX ? d[ax.x].toString() : ax.x.includes('assessed') ? `$${Math.round(d[ax.x]).toLocaleString()}` : Math.round(d[ax.x]).toLocaleString();
       const yVal = ax.y.includes('assessed') ? `$${Math.round(d[ax.y]).toLocaleString()}` : Math.round(d[ax.y]).toLocaleString();
       const outlierNote = d._outlier ? '<br><em style="color:#aaa">outlier — clipped to edge</em>' : '';
+      let colorInfo = '';
+      if (isCat && dataField && d[dataField] !== undefined) colorInfo = `<br>${symField}: ${d[dataField]}`;
+      else if (isCont && contDataField && d[contDataField] > 0) {
+        const fmtV = symField.includes('Year') ? d[contDataField] :
+          symField.includes('Acres') ? d[contDataField].toFixed(2)+' ac' :
+          '$'+Math.round(d[contDataField]).toLocaleString();
+        colorInfo = `<br>${symField}: ${fmtV}`;
+      }
       tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
-        .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${outlierNote}`);
+        .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${colorInfo}${outlierNote}`);
     })
-    .on('mouseout', function() { d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1); tooltip.classed('show',false); });
-  const zoom = d3.zoom().scaleExtent([0.5,20]).extent([[0,0],[iW,iH]]).translateExtent([[0,0],[iW,iH]])
+    .on('mouseout', function() {
+      d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1);
+      tooltip.classed('show',false);
+    });
+
+  // ── Zoom ──────────────────────────────────────────────────────────────────
+  // Reset button — appears when zoomed
+  const resetBtn = d3.select(container).append('button')
+    .attr('class','scatter-reset-btn')
+    .style('display','none')
+    .text('⟳ Reset')
+    .on('click', () => { svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity); });
+
+  const zoom = d3.zoom().scaleExtent([0.5,20]).extent([[0,0],[iW,iH]])
     .on('zoom', event => {
-      const nx=event.transform.rescaleX(xScale), ny=event.transform.rescaleY(yScale);
-      const cx=nx.copy().domain([Math.max(isYearX?1800:0,nx.domain()[0]),Math.max(0,nx.domain()[1])]);
-      const cy=ny.copy().domain([Math.max(0,ny.domain()[0]),Math.max(0,ny.domain()[1])]);
-      xAxisG.call(xAxis.scale(cx)); xAxisG.selectAll('text').style('font-size',fs+'px');
-      yAxisG.call(yAxis.scale(cy)); yAxisG.selectAll('text').style('font-size',fs+'px');
-      dots.selectAll('circle').attr('cx',d=>cx(Math.min(d[ax.x],cx.domain()[1]))).attr('cy',d=>cy(Math.min(d[ax.y],cy.domain()[1])));
+      const t  = event.transform;
+      const nx = t.rescaleX(xScale);
+      const ny = t.rescaleY(yScale);
+      // Clamp domains so axes don't go negative
+      const xLo = isYearX ? Math.max(1800, nx.domain()[0]) : Math.max(0, nx.domain()[0]);
+      const cx  = nx.copy().domain([xLo, Math.max(xLo+1, nx.domain()[1])]);
+      const yLo = Math.max(0, ny.domain()[0]);
+      const cy  = ny.copy().domain([yLo, Math.max(yLo+1, ny.domain()[1])]);
+      // Redraw axes with updated tick count based on current pixel size
+      xAxisG.call(xAxis.scale(cx).ticks(Math.max(3, Math.floor(iW/55))));
+      xAxisG.selectAll('text').style('font-size',fs+'px');
+      yAxisG.call(yAxis.scale(cy).ticks(Math.max(3, Math.floor(iH/40))));
+      yAxisG.selectAll('text').style('font-size',fs+'px');
+      dots.selectAll('circle')
+        .attr('cx', d => cx(Math.min(Math.max(d[ax.x], cx.domain()[0]), cx.domain()[1])))
+        .attr('cy', d => cy(Math.min(Math.max(d[ax.y], cy.domain()[0]), cy.domain()[1])));
+      resetBtn.style('display', t.k !== 1 || t.x !== 0 || t.y !== 0 ? 'block' : 'none');
     });
   svg.call(zoom);
-  svg.on('dblclick.zoom', () => svg.transition().duration(750).call(zoom.transform,d3.zoomIdentity));
+  svg.on('dblclick.zoom', () => {
+    svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity);
+    resetBtn.style('display','none');
+  });
+
+  // ── Inline color legend ───────────────────────────────────────────────────
+  let legendDiv = container.querySelector('.scatter-color-legend');
+  if (!legendDiv) {
+    legendDiv = document.createElement('div');
+    legendDiv.className = 'scatter-color-legend';
+    container.appendChild(legendDiv);
+  }
+  if (isCat && symOpt.colors) {
+    const catCounts = {};
+    sample.forEach(d => {
+      const v = d[dataField];
+      if (v !== undefined && v !== null) catCounts[String(v)] = (catCounts[String(v)]||0)+1;
+    });
+    const entries = Object.entries(symOpt.colors)
+      .filter(([k]) => k !== 'default' && catCounts[k])
+      .sort((a,b) => (catCounts[b[0]]||0) - (catCounts[a[0]]||0));
+    const MAX_LEGEND = 8;
+    const visible = entries.slice(0, MAX_LEGEND);
+    const overflow = entries.length - MAX_LEGEND;
+    const items = visible.map(([label,color]) =>
+      `<span class="sc-leg-item"><span class="sc-leg-dot" style="background:${color}"></span>${label}</span>`
+    ).join('');
+    const more = overflow > 0 ? `<span class="sc-leg-more">+${overflow} more</span>` : '';
+    legendDiv.innerHTML = `<span class="sc-leg-title">Color: ${symField}</span>${items}${more}`;
+    legendDiv.style.display = 'flex';
+  } else if (isCont && symOpt._thresholds?.length) {
+    // Show gradient ramp with bin labels
+    const ramp = symOpt.colorRamp;
+    const fmtT = v => symField.includes('Year') ? Math.round(v) :
+      symField.includes('Acres') ? v.toFixed(2)+' ac' :
+      v>=1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${Math.round(v/1e3)}K`;
+    const swatches = ramp.map((color,i) => {
+      const lo = i === 0 ? null : symOpt._thresholds[i-1];
+      const hi = symOpt._thresholds[i];
+      const label = hi === undefined ? `${fmtT(symOpt._thresholds[i-1])}+` :
+                    lo === null     ? `< ${fmtT(hi)}` :
+                    `${fmtT(lo)}–${fmtT(hi)}`;
+      return `<span class="sc-leg-item"><span class="sc-leg-dot" style="background:${color}"></span>${label}</span>`;
+    }).join('');
+    legendDiv.innerHTML = `<span class="sc-leg-title">Color: ${symField}</span>${swatches}`;
+    legendDiv.style.display = 'flex';
+  } else {
+    legendDiv.style.display = 'none';
+  }
 }
 
 // ─── Bar chart renderer ────────────────────────────────────────────────────
-function renderBarInto(container, data, color) {
+function renderBarInto(container, data, color, type, field, activeVal) {
   d3.select(container).selectAll('*').remove();
   if (!data.length) return;
   const width  = container.clientWidth  || 280;
@@ -993,16 +1423,34 @@ function renderBarInto(container, data, color) {
     .attr('x',0).attr('y',d=>yScale(d.label))
     .attr('width',d=>Math.max(0,xScale(d.mean)))
     .attr('height',yScale.bandwidth())
-    .attr('fill',color).attr('rx',2);
+    .attr('fill',d => d.label === activeVal ? d3.color(color).darker(0.5).formatHex() : color)
+    .attr('fill-opacity', d => activeVal && d.label !== activeVal ? 0.35 : 1)
+    .attr('rx',2);
+  // Full-row hover zone (covers label area too)
+  const totalRowW = margin.left + iW;
   g.selectAll('.bar-hover').data(data).enter().append('rect').attr('class','bar-hover')
-    .attr('x',0).attr('y',d=>yScale(d.label))
-    .attr('width',iW).attr('height',yScale.bandwidth())
+    .attr('x',-margin.left).attr('y',d=>yScale(d.label))
+    .attr('width',totalRowW).attr('height',yScale.bandwidth())
     .attr('fill','transparent')
+    .style('cursor', type ? 'pointer' : 'default')
     .on('mouseover', function(event,d) {
       tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
-        .html(`<strong>${d.label}</strong><br>Count: ${d.count.toLocaleString()}<br>Mean Assessment: ${fmtVal(d.mean)}`);
+        .html(`<strong>${d.label}</strong><br>Parcels: ${d.count.toLocaleString()}<br>Mean 2022 Assessment: ${fmtVal(d.mean)}`);
+      d3.select(this).attr('fill','rgba(0,0,0,0.04)');
     })
-    .on('mouseout', () => tooltip.classed('show',false));
+    .on('mouseout', function() { tooltip.classed('show',false); d3.select(this).attr('fill','transparent'); })
+    .on('click', function(event,d) {
+      if (!type || !field) return;
+      applyBarFilter(type, field, d.label);
+    });
+  // Y axis label tooltips
+  yAxisG.selectAll('text').on('mouseover', function(event,d) {
+    tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+      .html(`<strong>${d}</strong>`);
+  }).on('mouseout', () => tooltip.classed('show',false));
+  // X axis label
+  svg.append('text').attr('text-anchor','middle').attr('x',margin.left+iW/2).attr('y',svgHeight-4)
+    .style('font-size',(fs-1)+'px').style('fill','#5a5a7a').text('Mean 2022 Assessed Value');
   const zoom = d3.zoom().scaleExtent([1,5]).translateExtent([[0,0],[iW,iH]])
     .on('zoom', event => {
       const nx = event.transform.rescaleX(xScale);
@@ -1012,6 +1460,119 @@ function renderBarInto(container, data, color) {
     });
   svg.call(zoom);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINKED VIEWS — bar click → filter map + charts
+// ─────────────────────────────────────────────────────────────────────────────
+function applyBarFilter(type, field, value) {
+  // Toggle: clicking active filter clears it
+  const current = activeFilter[type];
+  const isSame = current && current.field === field && current.value === value;
+  activeFilter[type] = isSame ? null : { field, value };
+  renderFilterChip(type);
+  applyMapFilter(type);
+  // Re-run charts with filtered data
+  const parcels = getFilteredParcels(type);
+  if (type === 'residential') {
+    if (activeBeeswarm.residential === 'style') updateResBeeswarm(parcels);
+    else updateResBedroomBeeswarm(parcels);
+  }
+  if (type === 'condo') {
+    if (activeBeeswarm.condo === 'style') updateCondoBeeswarm(parcels);
+    else updateCondoBedroomBeeswarm(parcels);
+  }
+  if (type === 'commercial') updateCommercialZoneChart(parcels);
+  updateScatter(type);
+}
+
+function getFilteredParcels(type) {
+  const all = parcelData[type] || [];
+  const f = activeFilter[type];
+  if (!f) return all;
+  const fieldMap = { neighborhood:'neighborhood', style:'style', zone:'zone', stateUse:'stateUse', frame:'frame' };
+  // f.field is the bar dropdown key (e.g. 'neighborhood'), map to parcel object key
+  const key = fieldMap[f.field] || f.field;
+  return all.filter(p => String(p[key]) === String(f.value));
+}
+
+function applyMapFilter(type) {
+  const maps = { residential:residentialMap, condo:condoMap, commercial:commercialMap, vacant:vacantMap };
+  const map = maps[type];
+  if (!map || !map.getLayer('parcels-fill')) return;
+  const f = activeFilter[type];
+  if (!f) {
+    // Restore type-only filter
+    window.toggleParcelFilter && applyTypeFilter(type, map);
+    return;
+  }
+  // Map the bar field key to the raw tile property name
+  const tileField = { neighborhood:'Neighborhood', style:'Style Description', zone:'Zone', stateUse:'State Use Description', frame:'Frame Type' };
+  const tf = tileField[f.field];
+  if (!tf) return;
+  const typeFilter = getTypeFilterExpr(type);
+  const catFilter = ['==', ['get', tf], f.value];
+  const combined = typeFilter ? ['all', typeFilter, catFilter] : catFilter;
+  map.setFilter('parcels-fill', combined);
+  map.setFilter('parcels-outline', combined);
+}
+
+function applyTypeFilter(type, map) {
+  if (showAllParcels[type]) { map.setFilter('parcels-fill',null); map.setFilter('parcels-outline',null); return; }
+  const expr = getTypeFilterExpr(type);
+  if (expr) { map.setFilter('parcels-fill',expr); map.setFilter('parcels-outline',expr); }
+}
+
+function getTypeFilterExpr(type) {
+  if (showAllParcels[type]) return null;
+  if (type==='vacant')  return ['any',['==',['get','Property Type'],'Vacant'],['==',['get','Property Type'],'Vacant Land']];
+  if (type==='condo')   return ['any',['==',['get','Property Type'],'Condo'],['==',['get','Property Type'],'Condominium']];
+  return ['==',['get','Property Type'],type.charAt(0).toUpperCase()+type.slice(1)];
+}
+
+function renderFilterChip(type) {
+  const chipId = `${type === 'residential' ? 'res' : type}-filter-chip`;
+  const el = document.getElementById(chipId);
+  if (!el) return;
+  const f = activeFilter[type];
+  if (!f) { el.style.display='none'; el.innerHTML=''; return; }
+  const fieldLabels = { neighborhood:'Neighborhood', style:'Style', zone:'Zone', stateUse:'State Use', frame:'Frame Type' };
+  el.style.display = 'flex';
+  el.innerHTML = `<span class="filter-chip-label">${fieldLabels[f.field]||f.field}: <strong>${f.value}</strong></span><button class="filter-chip-clear" onclick="clearBarFilter('${type}')" aria-label="Clear filter">×</button>`;
+}
+
+window.clearBarFilter = function(type) {
+  activeFilter[type] = null;
+  renderFilterChip(type);
+  applyMapFilter(type);
+  // Re-run charts with all data
+  updateChartsForType(type);
+};
+
+// Override updateRightBarChart to use filtered parcels for chart but highlight active bar
+window.updateRightBarChart = function(type, field) {
+  const containerId = `${type === 'residential' ? 'res' : type}RightBarChart`;
+  const container   = document.getElementById(containerId);
+  if (!container) return;
+  const parcels = parcelData[type]; // always use all parcels for the bar chart
+  if (!parcels?.length) return;
+  const grouped = {};
+  parcels.forEach(p => {
+    const val = p[field];
+    if (!val || val === 'Unknown' || p.assessed2022 <= 0) return;
+    if (!grouped[val]) grouped[val] = { sum: 0, count: 0 };
+    grouped[val].sum   += p.assessed2022;
+    grouped[val].count += 1;
+  });
+  const data = Object.entries(grouped)
+    .map(([label, { sum, count }]) => ({ label, count, mean: sum / count }))
+    .sort((a, b) => b.mean - a.mean);
+  if (!data.length) return;
+  const headingId = `${type === 'residential' ? 'res' : type}-bar-heading`;
+  const headEl = document.getElementById(headingId);
+  if (headEl) headEl.textContent = 'Mean 2022 Assessment';
+  const activeVal = activeFilter[type]?.field === field ? activeFilter[type]?.value : null;
+  watchAndRender(container, () => renderBarInto(container, data, COLORS[type], type, field, activeVal));
+};
 
 // ─── Loading / Error UI ────────────────────────────────────────────────────
 function showLoading(msg) {
