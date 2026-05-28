@@ -38,16 +38,10 @@
   --serif: 'Playfair Display', serif;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   RESET & BASE STYLES
-   ═══════════════════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: var(--sans); color: var(--ink); background: var(--paper); }
 button { cursor: pointer; border: none; background: none; font-family: inherit; }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   LOADING OVERLAY
-   ═══════════════════════════════════════════════════════════════════════════ */
 #loading-overlay {
   position: fixed; inset: 0; z-index: 9999;
   background: var(--ink);
@@ -60,9 +54,6 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .loader-fill { height: 100%; background: var(--accent); width: 30%; animation: fill 1.8s ease-in-out infinite alternate; }
 @keyframes fill { to { width: 90%; } }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   LANDING PAGE
-   ═══════════════════════════════════════════════════════════════════════════ */
 #landing {
   position: fixed; inset: 0; z-index: 100;
   background: var(--ink);
@@ -80,7 +71,6 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   letter-spacing: .1em; text-transform: uppercase;
   border: 1px solid rgba(200,75,49,.4); border-radius: 20px; padding: .25rem .75rem;
 }
-
 .landing-hero {
   flex: 1; display: flex; align-items: center; padding: 5rem 3rem 3rem;
   gap: 6rem; max-width: 1400px; margin: 0 auto; width: 100%;
@@ -94,8 +84,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .hero-eyebrow::before { content: ''; display: block; width: 2rem; height: 1px; background: var(--accent-2); }
 .hero-title {
   font-family: var(--serif); font-size: clamp(3rem, 5vw, 5rem);
-  color: var(--paper); line-height: 1.05; margin-bottom: 2rem;
-  font-weight: 900;
+  color: var(--paper); line-height: 1.05; margin-bottom: 2rem; font-weight: 900;
 }
 .hero-title em { color: var(--accent-2); font-style: normal; }
 .hero-desc {
@@ -112,7 +101,6 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .hero-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(198,75,49,.4); }
 .hero-cta svg { transition: transform .2s; }
 .hero-cta:hover svg { transform: translateX(4px); }
-
 .hero-stats {
   flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
   background: rgba(255,255,255,.06); border-radius: var(--card-r); overflow: hidden;
@@ -124,27 +112,18 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   border: none; text-align: left; transition: background .2s;
 }
 .hero-stat:hover { background: rgba(255,255,255,.07); }
-.hero-stat-value {
-  font-family: var(--mono); font-size: 1.6rem; font-weight: 500;
-  margin-bottom: .4rem;
-}
-.hero-stat-label {
-  font-size: .8rem; color: rgba(247,244,239,.45); text-transform: uppercase;
-  letter-spacing: .06em;
-}
+.hero-stat-value { font-family: var(--mono); font-size: 1.6rem; font-weight: 500; margin-bottom: .4rem; }
+.hero-stat-label { font-size: .8rem; color: rgba(247,244,239,.45); text-transform: uppercase; letter-spacing: .06em; }
 .res-color  { color: var(--res); }
 .condo-color{ color: var(--condo); }
 .comm-color { color: var(--comm); }
 .vac-color  { color: var(--vacant); }
-
 .landing-features {
   border-top: 1px solid rgba(255,255,255,.06);
   padding: 3rem;
   display: flex; gap: 3rem; max-width: 1400px; margin: 0 auto; width: 100%;
 }
-.feature {
-  flex: 1; display: flex; gap: 1rem; align-items: flex-start;
-}
+.feature { flex: 1; display: flex; gap: 1rem; align-items: flex-start; }
 .feature-icon {
   width: 36px; height: 36px; border-radius: 8px;
   background: rgba(200,75,49,.15); display: flex; align-items: center; justify-content: center;
@@ -153,12 +132,8 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .feature-title { font-size: .9rem; font-weight: 600; color: var(--paper); margin-bottom: .3rem; }
 .feature-desc  { font-size: .8rem; color: rgba(247,244,239,.4); line-height: 1.6; }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   APP SHELL
-   ═══════════════════════════════════════════════════════════════════════════ */
 #app { display: none; flex-direction: column; height: 100vh; overflow: hidden; }
 
-/* ─── Top Nav ──────────────────────────────────────────────────────────────── */
 .app-nav {
   height: 52px; flex-shrink: 0;
   background: var(--ink); color: var(--paper);
@@ -182,399 +157,151 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   margin-left: auto;
 }
 
-/* Search Bar */
-.search-container {
-  position: relative;
-  flex: 0 0 auto;
-  width: 280px;
-}
-
+.search-container { position: relative; flex: 0 0 auto; width: 280px; }
 .search-input {
-  width: 100%;
-  padding: .5rem .75rem;
+  width: 100%; padding: .5rem .75rem;
   border: 1px solid rgba(255,255,255,.15);
-  background: rgba(255,255,255,.08);
-  color: var(--paper);
-  border-radius: 6px;
-  font-size: .8rem;
-  font-family: var(--sans);
-  transition: all .2s;
+  background: rgba(255,255,255,.08); color: var(--paper);
+  border-radius: 6px; font-size: .8rem; font-family: var(--sans); transition: all .2s;
 }
-
-.search-input::placeholder {
-  color: rgba(247,244,239,.4);
-}
-
-.search-input:focus {
-  outline: none;
-  background: rgba(255,255,255,.12);
-  border-color: var(--accent-2);
-}
-
+.search-input::placeholder { color: rgba(247,244,239,.4); }
+.search-input:focus { outline: none; background: rgba(255,255,255,.12); border-color: var(--accent-2); }
 .search-results {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  max-height: 400px;
-  overflow-y: auto;
-  background: var(--paper);
-  border: 1px solid var(--paper-3);
-  border-radius: 6px;
-  box-shadow: var(--shadow-lg);
-  display: none;
-  z-index: 1000;
+  position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+  max-height: 400px; overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--paper-3);
+  border-radius: 6px; box-shadow: var(--shadow-lg); display: none; z-index: 1000;
 }
+.search-results.show { display: block; }
+.search-result-item { padding: .75rem 1rem; border-bottom: 1px solid var(--paper-2); cursor: pointer; transition: background .15s; }
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item:hover { background: var(--paper-2); }
+.search-result-address { font-size: .85rem; font-weight: 600; color: var(--ink); margin-bottom: .25rem; }
+.search-result-details { font-size: .7rem; color: var(--ink-3); display: flex; gap: .75rem; flex-wrap: wrap; }
+.search-result-badge { display: inline-block; padding: .15rem .4rem; background: var(--paper-2); border-radius: 3px; font-family: var(--mono); font-size: .65rem; }
+.search-no-results { padding: 1.5rem; text-align: center; color: var(--ink-3); font-size: .8rem; }
 
-.search-results.show {
-  display: block;
-}
-
-.search-result-item {
-  padding: .75rem 1rem;
-  border-bottom: 1px solid var(--paper-2);
-  cursor: pointer;
-  transition: background .15s;
-}
-
-.search-result-item:last-child {
-  border-bottom: none;
-}
-
-.search-result-item:hover {
-  background: var(--paper-2);
-}
-
-.search-result-address {
-  font-size: .85rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin-bottom: .25rem;
-}
-
-.search-result-details {
-  font-size: .7rem;
-  color: var(--ink-3);
-  display: flex;
-  gap: .75rem;
-  flex-wrap: wrap;
-}
-
-.search-result-badge {
-  display: inline-block;
-  padding: .15rem .4rem;
-  background: var(--paper-2);
-  border-radius: 3px;
-  font-family: var(--mono);
-  font-size: .65rem;
-}
-
-.search-no-results {
-  padding: 1.5rem;
-  text-align: center;
-  color: var(--ink-3);
-  font-size: .8rem;
-}
-
-/* ─── Dashboard Layout ─────────────────────────────────────────────────────── */
 .dashboard {
   display: none; flex: 1; overflow: hidden;
   grid-template-columns: var(--left-width, 400px) 1fr var(--right-width, 380px);
   grid-template-rows: 1fr;
 }
 .dashboard.active { display: grid; }
-
 .dash-left, .dash-right {
   display: flex; flex-direction: column; gap: .75rem;
   padding: .75rem; overflow-y: auto;
-  background: var(--paper-2);
-  position: relative;
+  background: var(--paper-2); position: relative;
   transition: margin-left .3s, margin-right .3s, opacity .3s;
-  min-width: 200px;
-  max-width: 600px;
+  min-width: 200px; max-width: 600px;
 }
+.dash-center { display: flex; flex-direction: column; background: var(--paper); }
 
-.dash-center {
-  display: flex; flex-direction: column;
-  background: var(--paper);
-}
-
-/* Resize handles */
-.resize-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  cursor: ew-resize;
-  z-index: 10;
-}
-
+.resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 10; }
 .resize-handle::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 2px;
-  height: 40px;
-  background: var(--ink-3);
-  border-radius: 2px;
-  opacity: 0;
-  transition: opacity .2s;
+  content: ''; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); width: 2px; height: 40px;
+  background: var(--ink-3); border-radius: 2px; opacity: 0; transition: opacity .2s;
 }
-
-.resize-handle:hover::before {
-  opacity: 0.4;
-}
-
-.resize-handle.resizing::before {
-  opacity: 0.6;
-}
-
-.dash-left .resize-handle {
-  right: 0;
-}
-
-.dash-right .resize-handle {
-  left: 0;
-}
+.resize-handle:hover::before { opacity: 0.4; }
+.resize-handle.resizing::before { opacity: 0.6; }
+.dash-left .resize-handle { right: 0; }
+.dash-right .resize-handle { left: 0; }
 
 .sidebar-toggle {
   position: absolute; top: 50%; transform: translateY(-50%);
   background: var(--paper); color: var(--ink);
   font-size: 1.2rem; font-weight: 600;
   padding: .5rem .25rem; border-radius: 4px;
-  box-shadow: var(--shadow);
-  z-index: 5;
-  transition: background .2s;
+  box-shadow: var(--shadow); z-index: 5; transition: background .2s;
 }
 .sidebar-toggle:hover { background: var(--paper-3); }
 .dash-left .sidebar-toggle { right: -10px; }
 .dash-right .sidebar-toggle { left: -10px; }
 
-/* ─── Stats Strip ──────────────────────────────────────────────────────────── */
-.stats-strip {
-  display: flex; gap: 1px; background: var(--paper-3);
-  border-bottom: 1px solid var(--paper-3);
-}
-.stat-card {
-  flex: 1; padding: 1rem 1.25rem;
-  background: var(--paper); display: flex; flex-direction: column;
-}
-.stat-lbl {
-  font-size: .7rem; color: var(--ink-3); text-transform: uppercase;
-  letter-spacing: .06em; margin-bottom: .3rem; font-weight: 500;
-}
-.stat-val {
-  font-family: var(--mono); font-size: 1.3rem; font-weight: 600;
-  color: var(--ink); margin-bottom: .2rem;
-}
-.stat-delta {
-  font-size: .75rem; font-weight: 600;
-  font-family: var(--mono);
-}
+.stats-strip { display: flex; gap: 1px; background: var(--paper-3); border-bottom: 1px solid var(--paper-3); }
+.stat-card { flex: 1; padding: 1rem 1.25rem; background: var(--paper); display: flex; flex-direction: column; }
+.stat-lbl { font-size: .7rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .3rem; font-weight: 500; }
+.stat-val { font-family: var(--mono); font-size: 1.3rem; font-weight: 600; color: var(--ink); margin-bottom: .2rem; }
+.stat-delta { font-size: .75rem; font-weight: 600; font-family: var(--mono); }
 .stat-delta.up { color: #059669; }
 .stat-delta.down { color: #dc2626; }
 
-/* ─── Map Container ────────────────────────────────────────────────────────── */
-.map-wrap {
-  flex: 1; position: relative; overflow: hidden;
-}
-.map-container {
-  position: absolute; inset: 0;
-}
+.map-wrap { flex: 1; position: relative; overflow: hidden; }
+.map-container { position: absolute; inset: 0; }
 .map-toolbar {
   position: absolute; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: .75rem;
   background: rgba(255,255,255,.95); backdrop-filter: blur(10px);
-  padding: .5rem 1rem; border-radius: 6px;
-  box-shadow: var(--shadow-lg);
+  padding: .5rem 1rem; border-radius: 6px; box-shadow: var(--shadow-lg);
 }
-.map-badge {
-  font-family: var(--mono); font-size: .7rem; color: var(--ink-2);
-  letter-spacing: .08em; text-transform: uppercase; font-weight: 500;
-}
-.filter-toggle-btn {
-  font-size: .75rem; padding: .35rem .75rem;
-  background: var(--paper-2); color: var(--ink);
-  border-radius: 4px; font-weight: 500;
-  transition: all .15s;
-}
+.map-badge { font-family: var(--mono); font-size: .7rem; color: var(--ink-2); letter-spacing: .08em; text-transform: uppercase; font-weight: 500; }
+.filter-toggle-btn { font-size: .75rem; padding: .35rem .75rem; background: var(--paper-2); color: var(--ink); border-radius: 4px; font-weight: 500; transition: all .15s; }
 .filter-toggle-btn:hover { background: var(--paper-3); }
 .filter-toggle-btn.active { background: var(--accent); color: white; }
 
-/* ─── Panel Sections ───────────────────────────────────────────────────────── */
-.panel-section {
-  background: white; border-radius: var(--card-r);
-  padding: .75rem; box-shadow: var(--shadow);
-  display: flex; flex-direction: column;
-  flex-shrink: 0;
+.panel-section { background: white; border-radius: var(--card-r); padding: .75rem; box-shadow: var(--shadow); display: flex; flex-direction: column; flex-shrink: 0; }
+.panel-heading { font-size: .75rem; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .6rem; flex-shrink: 0; }
+.sym-select { width: 100%; padding: .5rem; border-radius: 6px; border: 1px solid var(--paper-3); font-size: .8rem; font-family: var(--sans); background: var(--paper); color: var(--ink); cursor: pointer; }
+.chart-field-select {
+  width: 100%; padding: .4rem .5rem; border-radius: 5px;
+  border: 1px solid var(--paper-3); font-size: .75rem; font-family: var(--sans);
+  background: var(--paper-2); color: var(--ink); cursor: pointer; margin-bottom: .5rem; flex-shrink: 0;
 }
-.panel-heading {
-  font-size: .75rem; font-weight: 600; color: var(--ink-2);
-  text-transform: uppercase; letter-spacing: .06em;
-  margin-bottom: .6rem;
-  flex-shrink: 0;
-}
-.sym-select {
-  width: 100%; padding: .5rem; border-radius: 6px;
-  border: 1px solid var(--paper-3);
-  font-size: .8rem; font-family: var(--sans);
-  background: var(--paper); color: var(--ink);
-  cursor: pointer;
-}
+.chart-field-select:focus { outline: none; border-color: var(--accent-2); }
 
-/* ─── Legend ───────────────────────────────────────────────────────────────── */
-.legend-list {
-  display: flex; flex-direction: column; gap: .35rem;
-  max-height: 180px; overflow-y: auto;
-}
-.legend-item {
-  display: flex; align-items: center; gap: .5rem;
-  font-size: .7rem; color: var(--ink-2);
-}
-.legend-swatch {
-  width: 12px; height: 12px; border-radius: 2px;
-  flex-shrink: 0; border: 1px solid rgba(0,0,0,.1);
-}
-.legend-ramp {
-  display: flex; height: 20px; border-radius: 4px; overflow: hidden;
-  border: 1px solid rgba(0,0,0,.1);
-}
-.legend-ramp-seg {
-  flex: 1;
-}
-.legend-scale {
-  display: flex; justify-content: space-between;
-  font-size: .65rem; color: var(--ink-3);
-  margin-top: .25rem;
-}
+.legend-list { display: flex; flex-direction: column; gap: .35rem; max-height: 180px; overflow-y: auto; }
+.legend-item { display: flex; align-items: center; gap: .5rem; font-size: .7rem; color: var(--ink-2); }
+.legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(0,0,0,.1); }
+.legend-ramp { display: flex; height: 20px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0,0,0,.1); }
+.legend-ramp-seg { flex: 1; }
+.legend-scale { display: flex; justify-content: space-between; font-size: .65rem; color: var(--ink-3); margin-top: .25rem; }
 
-/* ─── Charts (D3) ──────────────────────────────────────────────────────────── */
-.chart-wrap {
-  position: relative;
-  height: 200px;
-  margin-top: .5rem;
-  overflow-y: auto; 
-  flex-shrink: 0;
-}
-.chart-wrap.tall {
-  height: 280px;
-  overflow-y: auto;
-}
-.scatter-controls {
-  display: flex; gap: .35rem; margin-bottom: .5rem;
-  flex-shrink: 0;
-}
-.scatter-btn {
-  flex: 1; padding: .4rem; font-size: .7rem;
-  background: var(--paper-2); color: var(--ink-2);
-  border-radius: 4px; font-weight: 500;
-  transition: all .15s;
-}
+.chart-wrap { position: relative; height: 200px; margin-top: .5rem; overflow-y: auto; flex-shrink: 0; }
+.chart-wrap.tall { height: 280px; overflow-y: auto; }
+/* Beeswarm gets more height since it shows all individual parcels */
+.chart-wrap.beeswarm { height: 340px; overflow: hidden; }
+
+.scatter-controls { display: flex; gap: .35rem; margin-bottom: .5rem; flex-shrink: 0; }
+.scatter-btn { flex: 1; padding: .4rem; font-size: .7rem; background: var(--paper-2); color: var(--ink-2); border-radius: 4px; font-weight: 500; transition: all .15s; }
 .scatter-btn:hover { background: var(--paper-3); }
 .scatter-btn.active { background: var(--accent); color: white; }
-.scatter-wrap {
-  position: relative;
-  height: 280px;
-  background: white; border-radius: 8px;
-  border: 1px solid var(--paper-3);
-  flex-shrink: 0;
-  overflow: hidden;
-}
+.scatter-wrap { position: relative; height: 280px; background: white; border-radius: 8px; border: 1px solid var(--paper-3); flex-shrink: 0; overflow: hidden; }
 
-/* D3 Chart Styles */
-.d3-chart svg {
-  width: 100%;
-  height: 100%;
-  font-family: var(--sans);
-}
-.d3-chart .axis text {
-  fill: var(--ink-3);
-  font-size: 10px;
-  white-space: nowrap;
-}
-.d3-chart .axis line,
-.d3-chart .axis path {
-  stroke: var(--paper-3);
-}
-.d3-chart .grid line {
-  stroke: var(--paper-3);
-  stroke-opacity: 0.3;
-}
-.d3-chart .bar {
-  transition: opacity .2s;
-  cursor: pointer;
-}
-.d3-chart .bar:hover {
-  opacity: 0.8;
-}
-.d3-chart .dot {
-  transition: r .2s, opacity .2s;
-  cursor: pointer;
-}
-.d3-chart .dot:hover {
-  r: 6;
-  stroke-width: 2;
-}
+.d3-chart svg { width: 100%; height: 100%; font-family: var(--sans); }
+.d3-chart .axis text { fill: var(--ink-3); font-size: 10px; white-space: nowrap; }
+.d3-chart .axis line, .d3-chart .axis path { stroke: var(--paper-3); }
+.d3-chart .grid line { stroke: var(--paper-3); stroke-opacity: 0.3; }
+.d3-chart .bar { transition: opacity .2s; cursor: pointer; }
+.d3-chart .bar:hover { opacity: 0.8; }
+.d3-chart .dot { transition: r .2s, opacity .2s; cursor: pointer; }
+.d3-chart .dot:hover { r: 6; stroke-width: 2; }
 
-/* D3 Tooltip */
 .d3-tooltip {
-  position: absolute;
-  background: rgba(26,26,46,0.95);
-  color: #f7f4ef;
-  padding: 0.75rem;
-  border-radius: 6px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity .2s;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  z-index: 1000;
-  max-width: 250px;
+  position: absolute; background: rgba(26,26,46,0.95); color: #f7f4ef;
+  padding: 0.75rem; border-radius: 6px; pointer-events: none; opacity: 0;
+  transition: opacity .2s; font-size: 0.75rem; line-height: 1.4; z-index: 1000; max-width: 250px;
 }
-.d3-tooltip.show {
-  opacity: 1;
-}
+.d3-tooltip.show { opacity: 1; }
 
-/* ─── Parcel Detail ────────────────────────────────────────────────────────── */
-.prop-placeholder {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 2rem; text-align: center; color: var(--ink-3);
-}
-.ph-icon {
-  font-size: 2rem; margin-bottom: .5rem; opacity: .3;
-}
-.prop-detail {
-  display: flex; flex-direction: column; gap: .4rem;
-}
-.prop-addr {
-  font-weight: 600; font-size: .85rem; color: var(--ink);
-  margin-bottom: .4rem; line-height: 1.3;
-}
-.prop-change {
-  font-family: var(--mono); font-size: .75rem; font-weight: 600;
-  padding: .2rem .5rem; border-radius: 4px; display: inline-block;
-}
+.prop-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; color: var(--ink-3); }
+.ph-icon { font-size: 2rem; margin-bottom: .5rem; opacity: .3; }
+.prop-detail { display: flex; flex-direction: column; gap: .4rem; }
+.prop-addr { font-weight: 600; font-size: .85rem; color: var(--ink); margin-bottom: .4rem; line-height: 1.3; }
+.prop-change { font-family: var(--mono); font-size: .75rem; font-weight: 600; padding: .2rem .5rem; border-radius: 4px; display: inline-block; }
 .prop-change.up { background: #d1fae5; color: #065f46; }
 .prop-change.down { background: #fee2e2; color: #991b1b; }
-.prop-row {
-  display: flex; justify-content: space-between; gap: .75rem;
-  padding: .35rem 0; border-bottom: 1px solid var(--paper-2);
-}
+.prop-row { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; border-bottom: 1px solid var(--paper-2); }
 .prop-row:last-child { border-bottom: none; }
-.prop-row-label {
-  font-size: .7rem; color: var(--ink-3); font-weight: 500;
-  text-transform: uppercase; letter-spacing: .04em;
-}
-.prop-row-value {
-  font-size: .75rem; color: var(--ink); font-weight: 500;
-  text-align: right;
+.prop-row-label { font-size: .7rem; color: var(--ink-3); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.prop-row-value { font-size: .75rem; color: var(--ink); font-weight: 500; text-align: right; }
+
+/* Beeswarm category label strip */
+.beeswarm-category-label {
+  font-size: 9px;
+  fill: var(--ink-3);
+  text-anchor: middle;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   RESPONSIVE
-   ═══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 1400px) {
   .landing-hero { flex-direction: column; padding: 3rem 2rem; gap: 3rem; }
   .hero-text { flex: none; max-width: 100%; }
@@ -589,31 +316,22 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     LOADING OVERLAY
-     ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="loading-overlay">
   <div class="loader-logo">Property Assessment Value</div>
   <div class="loader-sub" id="loading-message">Initializing…</div>
   <div class="loader-bar"><div class="loader-fill"></div></div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     LANDING PAGE
-     ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="landing" style="display:none">
   <nav class="landing-nav">
     <div class="landing-brand">Property Assessment Value</div>
     <div class="landing-badge">Beta</div>
   </nav>
-  
   <div class="landing-hero">
     <div class="hero-text">
       <div class="hero-eyebrow">Property Assessment Value Platform</div>
       <h1 class="hero-title">Explore current and prior year property assessments</h1>
-      <p class="hero-desc">
-        City of West Hartford
-      </p>
+      <p class="hero-desc">City of West Hartford</p>
       <button class="hero-cta" id="enter-btn">
         Enter Dashboard
         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -621,50 +339,26 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </svg>
       </button>
     </div>
-    
     <div class="hero-stats">
-      <div class="hero-stat">
-        <div class="hero-stat-value res-color" id="ls-res-total">—</div>
-        <div class="hero-stat-label">Residential Value</div>
-      </div>
-      <div class="hero-stat">
-        <div class="hero-stat-value condo-color" id="ls-condo-total">—</div>
-        <div class="hero-stat-label">Condo Value</div>
-      </div>
-      <div class="hero-stat">
-        <div class="hero-stat-value comm-color" id="ls-comm-total">—</div>
-        <div class="hero-stat-label">Commercial Value</div>
-      </div>
-      <div class="hero-stat">
-        <div class="hero-stat-value vac-color" id="ls-vac-total">—</div>
-        <div class="hero-stat-label">Vacant Land Value</div>
-      </div>
+      <div class="hero-stat"><div class="hero-stat-value res-color" id="ls-res-total">—</div><div class="hero-stat-label">Residential Value</div></div>
+      <div class="hero-stat"><div class="hero-stat-value condo-color" id="ls-condo-total">—</div><div class="hero-stat-label">Condo Value</div></div>
+      <div class="hero-stat"><div class="hero-stat-value comm-color" id="ls-comm-total">—</div><div class="hero-stat-label">Commercial Value</div></div>
+      <div class="hero-stat"><div class="hero-stat-value vac-color" id="ls-vac-total">—</div><div class="hero-stat-label">Vacant Land Value</div></div>
     </div>
   </div>
-  
   <div class="landing-features">
     <div class="feature">
       <div class="feature-icon">🗺️</div>
-      <div>
-        <div class="feature-title">Your Property Assessment Value</div>
-        <div class="feature-desc">Understand what characteristics affect your property's value</div>
-      </div>
+      <div><div class="feature-title">Your Property Assessment Value</div><div class="feature-desc">Understand what characteristics affect your property's value</div></div>
     </div>
     <div class="feature">
       <div class="feature-icon">📊</div>
-      <div>
-        <div class="feature-title">Interactive Charts</div>
-        <div class="feature-desc">View neighborhoods, property styles, and property use</div>
-      </div>
+      <div><div class="feature-title">Interactive Charts</div><div class="feature-desc">View neighborhoods, property styles, and property use</div></div>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     APP SHELL
-     ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="app">
-  <!-- Top Navigation -->
   <nav class="app-nav">
     <div class="nav-brand">Property Assessment Value</div>
     <div class="nav-sep"></div>
@@ -697,34 +391,21 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
           <div id="resScatter" class="d3-chart"></div>
         </div>
       </div>
-      <!-- Residential only: Mean Assessment by Architectural Style -->
+      <!-- Beeswarm: Assessment distribution by Architectural Style -->
       <div class="panel-section chart-panel">
-        <div class="panel-heading">Mean Assessment by Architectural Style</div>
-        <div class="chart-wrap tall">
-          <div id="resStyleMeanChart" class="d3-chart"></div>
+        <div class="panel-heading">Assessment Distribution by Style</div>
+        <div class="chart-wrap beeswarm">
+          <div id="resBeeswarm" class="d3-chart"></div>
         </div>
       </div>
     </div>
-    
+
     <div class="dash-center">
       <div class="stats-strip">
-        <div class="stat-card">
-          <div class="stat-lbl">2022 Assessed Total</div>
-          <div class="stat-val" id="res-total25">—</div>
-          <div class="stat-delta" id="res-delta">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">2020 Assessed Total</div>
-          <div class="stat-val" id="res-total20">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Parcels Assessed</div>
-          <div class="stat-val" id="res-count">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Avg Value 2022</div>
-          <div class="stat-val" id="res-avg">—</div>
-        </div>
+        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="res-total25">—</div><div class="stat-delta" id="res-delta">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="res-total20">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Parcels Assessed</div><div class="stat-val" id="res-count">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg Value 2022</div><div class="stat-val" id="res-avg">—</div></div>
       </div>
       <div class="map-wrap">
         <div id="residentialMap" class="map-container"></div>
@@ -734,7 +415,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </div>
       </div>
     </div>
-    
+
     <div class="dash-right">
       <div class="resize-handle" data-dashboard="residential" data-side="right"></div>
       <button class="sidebar-toggle" onclick="toggleSidebar('residential','right')">›</button>
@@ -750,6 +431,19 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </select>
         <div class="panel-heading" style="margin-top:.5rem">Legend</div>
         <div id="res-legend" class="legend-list"></div>
+      </div>
+      <div class="panel-section chart-panel">
+        <div class="panel-heading">Aggregate By</div>
+        <select class="chart-field-select" id="res-bar-field" onchange="updateRightBarChart('residential',this.value)">
+          <option value="style">Architectural Style</option>
+          <option value="neighborhood">Neighborhood</option>
+          <option value="zone">Zone</option>
+          <option value="stateUse">State Use</option>
+          <option value="frame">Frame Type</option>
+        </select>
+        <div class="chart-wrap tall">
+          <div id="resRightBarChart" class="d3-chart"></div>
+        </div>
       </div>
       <div class="panel-section">
         <div class="panel-heading">Selected Parcel</div>
@@ -773,27 +467,21 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
           <div id="condoScatter" class="d3-chart"></div>
         </div>
       </div>
+      <!-- Beeswarm: Assessment distribution by Architectural Style --> 
+      <!-- <div class="panel-section chart-panel">
+        <div class="panel-heading">Assessment Distribution by Style</div>
+        <div class="chart-wrap beeswarm">
+          <div id="condoBeeswarm" class="d3-chart"></div>
+        </div>
+      </div> -->
     </div>
-    
+
     <div class="dash-center">
       <div class="stats-strip">
-        <div class="stat-card">
-          <div class="stat-lbl">2022 Assessed Total</div>
-          <div class="stat-val" id="condo-total25">—</div>
-          <div class="stat-delta" id="condo-delta">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">2020 Assessed Total</div>
-          <div class="stat-val" id="condo-total20">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Parcels</div>
-          <div class="stat-val" id="condo-count">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Avg Value 2022</div>
-          <div class="stat-val" id="condo-avg">—</div>
-        </div>
+        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="condo-total25">—</div><div class="stat-delta" id="condo-delta">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="condo-total20">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="condo-count">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg Value 2022</div><div class="stat-val" id="condo-avg">—</div></div>
       </div>
       <div class="map-wrap">
         <div id="condoMap" class="map-container"></div>
@@ -803,7 +491,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </div>
       </div>
     </div>
-    
+
     <div class="dash-right">
       <div class="resize-handle" data-dashboard="condo" data-side="right"></div>
       <button class="sidebar-toggle" onclick="toggleSidebar('condo','right')">›</button>
@@ -821,11 +509,16 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         <div id="condo-legend" class="legend-list"></div>
       </div>
       <div class="panel-section chart-panel">
-        <div class="panel-heading">State Use Description</div>
+        <div class="panel-heading">Aggregate By</div>
+        <select class="chart-field-select" id="condo-bar-field" onchange="updateRightBarChart('condo',this.value)">
+          <option value="stateUse">State Use</option>
+          <option value="style">Style Description</option>
+          <option value="zone">Zone</option>
+          <option value="frame">Frame Type</option>
+        </select>
         <div class="chart-wrap tall">
-          <div id="condoStateUseChart" class="d3-chart"></div>
+          <div id="condoRightBarChart" class="d3-chart"></div>
         </div>
-        
       </div>
       <div class="panel-section">
         <div class="panel-heading">Selected Parcel</div>
@@ -856,26 +549,13 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </div>
       </div>
     </div>
-    
+
     <div class="dash-center">
       <div class="stats-strip">
-        <div class="stat-card">
-          <div class="stat-lbl">2022 Assessed Total</div>
-          <div class="stat-val" id="commercial-total25">—</div>
-          <div class="stat-delta" id="commercial-delta">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">2020 Assessed Total</div>
-          <div class="stat-val" id="commercial-total20">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Parcels</div>
-          <div class="stat-val" id="commercial-count">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Avg Value 2022</div>
-          <div class="stat-val" id="commercial-avg">—</div>
-        </div>
+        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="commercial-total25">—</div><div class="stat-delta" id="commercial-delta">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="commercial-total20">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="commercial-count">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg Value 2022</div><div class="stat-val" id="commercial-avg">—</div></div>
       </div>
       <div class="map-wrap">
         <div id="commercialMap" class="map-container"></div>
@@ -885,7 +565,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </div>
       </div>
     </div>
-    
+
     <div class="dash-right">
       <div class="resize-handle" data-dashboard="commercial" data-side="right"></div>
       <button class="sidebar-toggle" onclick="toggleSidebar('commercial','right')">›</button>
@@ -902,18 +582,18 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         <div id="commercial-legend" class="legend-list"></div>
       </div>
       <div class="panel-section chart-panel">
-        <div class="panel-heading">State Use Description</div>
+        <div class="panel-heading">Aggregate By</div>
+        <select class="chart-field-select" id="commercial-bar-field" onchange="updateRightBarChart('commercial',this.value)">
+          <option value="stateUse">State Use</option>
+          <option value="style">Style Description</option>
+          <option value="zone">Zone</option>
+          <option value="neighborhood">Neighborhood</option>
+          <option value="frame">Frame Type</option>
+        </select>
         <div class="chart-wrap tall">
-          <div id="commercialStateUseChart" class="d3-chart"></div>
+          <div id="commercialRightBarChart" class="d3-chart"></div>
         </div>
       </div>
-      <div class="panel-section">
-      <div class="panel-heading">Style Description</div>
-      <div class="chart-wrap tall">
-        <div id="commercialStyleChart" class="d3-chart"></div>
-      </div>
-    </div>
-
       <div class="panel-section">
         <div class="panel-heading">Selected Parcel</div>
         <div id="commercial-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
@@ -929,34 +609,21 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
       <div class="panel-section chart-panel">
         <div class="panel-heading">Assessment vs. Acreage<span id="vacant-scatter-count"></span></div>
         <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">2022 Assess vs Acres/button>
-          <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
+          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">2022 Assess vs Acres</button>
+          <!-- <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button> -->
         </div>
         <div class="scatter-wrap">
           <div id="vacantScatter" class="d3-chart"></div>
         </div>
       </div>
     </div>
-    
+
     <div class="dash-center">
       <div class="stats-strip">
-        <div class="stat-card">
-          <div class="stat-lbl">2022 Assessed Total</div>
-          <div class="stat-val" id="vacant-total25">—</div>
-          <div class="stat-delta" id="vacant-delta">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">2020 Assessed Total</div>
-          <div class="stat-val" id="vacant-total20">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Parcels</div>
-          <div class="stat-val" id="vacant-count">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Avg Value 2022</div>
-          <div class="stat-val" id="vacant-avg">—</div>
-        </div>
+        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="vacant-total25">—</div><div class="stat-delta" id="vacant-delta">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="vacant-total20">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="vacant-count">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg Value 2022</div><div class="stat-val" id="vacant-avg">—</div></div>
       </div>
       <div class="map-wrap">
         <div id="vacantMap" class="map-container"></div>
@@ -966,7 +633,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         </div>
       </div>
     </div>
-    
+
     <div class="dash-right">
       <div class="resize-handle" data-dashboard="vacant" data-side="right"></div>
       <button class="sidebar-toggle" onclick="toggleSidebar('vacant','right')">›</button>
@@ -983,9 +650,14 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
         <div id="vacant-legend" class="legend-list"></div>
       </div>
       <div class="panel-section chart-panel">
-        <div class="panel-heading">State Use Description</div>
+        <div class="panel-heading">Aggregate By</div>
+        <select class="chart-field-select" id="vacant-bar-field" onchange="updateRightBarChart('vacant',this.value)">
+          <option value="stateUse">State Use</option>
+          <option value="zone">Zone</option>
+          <option value="neighborhood">Neighborhood</option>
+        </select>
         <div class="chart-wrap tall">
-          <div id="vacantStateUseChart" class="d3-chart"></div>
+          <div id="vacantRightBarChart" class="d3-chart"></div>
         </div>
       </div>
       <div class="panel-section">
@@ -998,6 +670,5 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 </div><!-- #app -->
 
 <script src="app.js"></script>
-
 </body>
 </html>

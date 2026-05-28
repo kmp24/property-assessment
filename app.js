@@ -1,14 +1,7 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// ASSESSOR'S ATLAS - D3 INTERACTIVE CHARTS VERSION
-// All charts support zoom and pan with responsive font sizing
-// ═══════════════════════════════════════════════════════════════════════════
 'use strict';
 
 console.log('🚀 Assessor\'s Atlas - D3 Interactive Version');
 
-// ───────────────────────────────────────────────────────────────────────────
-// STATE
-// ───────────────────────────────────────────────────────────────────────────
 let residentialMap, condoMap, commercialMap, vacantMap;
 let parcelData = { residential: [], condo: [], commercial: [], vacant: [] };
 let statsData = { residential: {}, condo: {}, commercial: {}, vacant: {} };
@@ -25,32 +18,21 @@ let sidebarState = {
   vacant: { left: false, right: false }
 };
 
-let showAllParcels = {
-  residential: false,
-  condo: false,
-  commercial: false,
-  vacant: false
-};
+let showAllParcels = { residential: false, condo: false, commercial: false, vacant: false };
 
 const scatterAxes = {
   residential: { x: 'sqft', y: 'assessed2022' },
-  condo: { x: 'sqft', y: 'assessed2022' },
-  commercial: { x: 'sqft', y: 'assessed2022' },
-  vacant: { x: 'acreage', y: 'assessed2022' },
+  condo:       { x: 'sqft', y: 'assessed2022' },
+  commercial:  { x: 'sqft', y: 'assessed2022' },
+  vacant:      { x: 'acreage', y: 'assessed2022' },
 };
 
 const STAT_PREFIX = {
-  residential: 'res',
-  condo: 'condo',
-  commercial: 'commercial',
-  vacant: 'vacant'
+  residential: 'res', condo: 'condo', commercial: 'commercial', vacant: 'vacant'
 };
 
 const COLORS = {
-  residential: '#EE7733',
-  condo: '#0077BB',
-  commercial: '#33BBEE',
-  vacant: '#009988'
+  residential: '#EE7733', condo: '#0077BB', commercial: '#33BBEE', vacant: '#009988'
 };
 
 const ZONE_COLORS = {
@@ -91,7 +73,6 @@ const AXIS_LABELS = {
   assessed2020:'2020 Assessment', assessed2022:'2022 Assessment'
 };
 
-// ── Percentile helper for outlier clipping ──────────────────────────────
 function percentile(arr, p) {
   if (!arr.length) return 0;
   const sorted = arr.slice().sort((a,b) => a-b);
@@ -100,7 +81,6 @@ function percentile(arr, p) {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
-// Global tooltip
 const tooltip = d3.select('body').append('div')
   .attr('class', 'd3-tooltip')
   .style('position','absolute')
@@ -241,9 +221,9 @@ async function collectParcelData(sourceLayer = 'parcels') {
   const buckets = { residential:[], condo:[], commercial:[], vacant:[] };
   features.forEach(f => {
     const pt = (f.properties['Property Type'] || '').trim();
-    if      (pt === 'Residential' || pt.includes('Residential'))           buckets.residential.push(f.properties);
-    else if (pt === 'Condo' || pt === 'Condominium')                        buckets.condo.push(f.properties);
-    else if (pt === 'Commercial')                                            buckets.commercial.push(f.properties);
+    if      (pt === 'Residential' || pt.includes('Residential'))               buckets.residential.push(f.properties);
+    else if (pt === 'Condo' || pt === 'Condominium')                            buckets.condo.push(f.properties);
+    else if (pt === 'Commercial')                                                buckets.commercial.push(f.properties);
     else if (pt === 'Vacant' || pt === 'Vacant Land' || pt.includes('Vacant')) buckets.vacant.push(f.properties);
   });
 
@@ -255,6 +235,7 @@ async function collectParcelData(sourceLayer = 'parcels') {
       owner:       p['Owner'] || '',
       type:        p['Property Type'] || '',
       neighborhood:p['Neighborhood'] || 'Unknown',
+      // 'style' is the canonical key for Style Description
       style:       p['Style Description'] || 'Unknown',
       zone:        p['Zone'] || 'Unknown',
       sqft:        parseFloat(p['Living Area']) || 0,
@@ -265,6 +246,7 @@ async function collectParcelData(sourceLayer = 'parcels') {
       assessed2020:parseFloat(p['Pre Year Assessed Total']) || 0,
       assessed2022:parseFloat(p['Assessed Total']) || 0,
       stateUse:    p['State Use Description'] || 'Unknown',
+      frame:       p['Frame Type'] || 'Unknown',
     }));
     parcelData[type] = parcels;
     dataCollected[type] = true;
@@ -272,7 +254,6 @@ async function collectParcelData(sourceLayer = 'parcels') {
     const total2020 = parcels.reduce((s,p) => s + p.assessed2020, 0);
     statsData[type] = { count:parcels.length, total2022, total2020 };
     updateStatsUI(type);
-    // Don't call updateChartsForType here — wait until dashboard is visible
   });
 
   setTimeout(() => {
@@ -327,17 +308,18 @@ function showParcelDetail(props, type) {
   const up  = pct !== null && parseFloat(pct) >= 0;
   const fmt = v => v > 0 ? '$'+Math.round(v).toLocaleString() : '—';
   const rows = [
-    ['Owner',      props['Owner']],
-    ['Zone',       props['Zone']],
+    ['Owner',       props['Owner']],
+    ['Zone',        props['Zone']],
     ['Neighborhood',props['Neighborhood']],
-    ['Style',      props['Style Description']],
-    ['Year Built', props['Effective Year Built']],
-    ['Living Area',props['Living Area'] ? Math.round(parseFloat(props['Living Area'])).toLocaleString()+' sf' : null],
-    ['Acres',      props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
-    ['Bedrooms',   props['Number of Bedroom']],
-    ['Bathrooms',  props['Number of Bathrooms']],
-    ['2022',       fmt(a25)],
-    ['2020',       fmt(a20)],
+    ['Style',       props['Style Description']],
+    ['Frame Type',  props['Frame Type']],
+    ['Year Built',  props['Effective Year Built']],
+    ['Living Area', props['Living Area'] ? Math.round(parseFloat(props['Living Area'])).toLocaleString()+' sf' : null],
+    ['Acres',       props['Land Acres'] ? parseFloat(props['Land Acres']).toFixed(2)+' ac' : null],
+    ['Bedrooms',    props['Number of Bedroom']],
+    ['Bathrooms',   props['Number of Bathrooms']],
+    ['2022',        fmt(a25)],
+    ['2020',        fmt(a20)],
   ].filter(([,v]) => v && v !== '0' && v !== '—');
   el.innerHTML = `<div class="prop-detail">
     <div class="prop-addr">${props['Property Address']||'Unknown'}</div>
@@ -457,7 +439,6 @@ function enterDashboard() {
   });
   setTimeout(() => {
     [residentialMap,condoMap,commercialMap,vacantMap].forEach(m => m.resize());
-    // Now the dashboard is visible — render all charts that have data
     ['residential','condo','commercial','vacant'].forEach(t => {
       if (dataCollected[t]) updateChartsForType(t);
     });
@@ -523,6 +504,7 @@ function selectParcel(parcelId, type) {
   showParcelDetail({
     'Property Address':parcel.address,'Parcel ID':parcel.parcelId,'Owner':parcel.owner,
     'Zone':parcel.zone,'Neighborhood':parcel.neighborhood,'Style Description':parcel.style,
+    'Frame Type':parcel.frame,
     'Effective Year Built':parcel.yearBuilt,'Gross Area of Primary Building':parcel.sqft,
     'Land Acres':parcel.acreage,'Number of Bedroom':parcel.bedrooms,'Number of Bathrooms':parcel.bathrooms,
     'Assessed Total':parcel.assessed2022,'Pre Year Assessed Total':parcel.assessed2020
@@ -582,293 +564,242 @@ function updateChartsForType(type) {
   const parcels = parcelData[type];
   if (!parcels?.length) return;
   setTimeout(() => {
-    if (type==='residential') updateResStyleMeanChart(parcels);
-    if (type==='condo')       { updateCondoNeighborhoodChart(parcels); updateStateUseChart(type,parcels); }
-    if (type==='commercial')  { updateCommercialZoneChart(parcels); updateCommercialUseChart(parcels); updateStateUseChart(type,parcels); updateCommercialStyleChart(parcels); }
-    if (type==='vacant')      { updateVacantUseChart(parcels); updateStateUseChart(type,parcels); }
-    if (type===activeTab) updateScatter(type);
+    // Residential left panel: beeswarm
+    if (type === 'residential') updateResBeeswarm(parcels);
+    // Condo left panel: beeswarm
+    if (type === 'condo') updateCondoBeeswarm(parcels);
+    // Commercial left panel: zone bar chart
+    if (type === 'commercial') updateCommercialZoneChart(parcels);
+    // Right panel: read current dropdown and render
+    const selectId = `${type === 'residential' ? 'res' : type}-bar-field`;
+    const sel = document.getElementById(selectId);
+    const field = sel ? sel.value : Object.keys(RIGHT_BAR_FIELDS[type])[0];
+    updateRightBarChart(type, field);
+    if (type === activeTab) updateScatter(type);
     else scatterPending[type] = true;
   }, 100);
 }
 
-// ─── Shared chart renderer — called directly AND by ResizeObserver ──────────
-function renderScatterInto(container, type, sample, ax) {
-  d3.select(container).selectAll('*').remove();
-  const width  = container.clientWidth  || 300;
-  const height = container.clientHeight || 260;
-  const fs = Math.max(9, Math.min(13, width / 28));
-  const margin = { top:12, right:12, bottom:Math.round(fs*4.2), left:Math.round(fs*5.2) };
-  const iW = Math.max(width  - margin.left - margin.right,  60);
-  const iH = Math.max(height - margin.top  - margin.bottom, 60);
-  const isYearX = ax.x === 'yearBuilt';
+// ═══════════════════════════════════════════════════════════════════════════
+// BEESWARM — residential left panel
+// Each dot = one parcel. Groups by architectural style along Y.
+// X axis = 2022 assessed value. Dots jitter vertically within their band
+// using d3.forceSimulation to avoid overlap.
+// ═══════════════════════════════════════════════════════════════════════════
+function updateResBeeswarm(parcels) {
+  const container = document.getElementById('resBeeswarm');
+  if (!container) return;
+  // Cap at top-N styles by count to keep the chart readable
+  const MAX_GROUPS = 10;
+  const counts = {};
+  parcels.forEach(p => { if (p.style && p.style !== 'Unknown' && p.assessed2022 > 0) counts[p.style] = (counts[p.style]||0) + 1; });
+  const topStyles = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, MAX_GROUPS).map(([s]) => s);
+  const filtered = parcels.filter(p => topStyles.includes(p.style) && p.assessed2022 > 0);
+  // Sample down if huge — beeswarm with thousands of dots gets slow
+  const step = Math.max(1, Math.ceil(filtered.length / 600));
+  const sample = filtered.filter((_,i) => i % step === 0);
+  if (!sample.length) return;
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.residential));
+}
 
-  // Clip to 95th percentile on each axis to suppress outliers
-  const xVals = sample.map(d=>d[ax.x]);
-  const yVals = sample.map(d=>d[ax.y]);
-  const xMax = isYearX ? d3.max(xVals) * 1.001 : percentile(xVals, 95) * 1.05;
-  const yMax = percentile(yVals, 95) * 1.05;
-  const xMin = isYearX ? d3.min(xVals) - 2 : 0;
-  // Keep outliers in data (visible as clipped dots at edge) but don't let them blow the scale
-  const clipped = sample.map(d => ({
+function updateCondoBeeswarm(parcels) {
+  const container = document.getElementById('condoBeeswarm');
+  if (!container) return;
+  // Cap at top-N styles by count to keep the chart readable
+  const MAX_GROUPS = 10;
+  const counts = {};
+  parcels.forEach(p => { if (p.style && p.style !== 'Unknown' && p.assessed2022 > 0) counts[p.style] = (counts[p.style]||0) + 1; });
+  const topStyles = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, MAX_GROUPS).map(([s]) => s);
+  const filtered = parcels.filter(p => topStyles.includes(p.style) && p.assessed2022 > 0);
+  // Sample down if huge — beeswarm with thousands of dots gets slow
+  const step = Math.max(1, Math.ceil(filtered.length / 600));
+  const sample = filtered.filter((_,i) => i % step === 0);
+  if (!sample.length) return;
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.condo));
+}
+
+function renderBeeswarmInto(container, data, categories, color) {
+  d3.select(container).selectAll('*').remove();
+  const width  = container.clientWidth  || 340;
+  const height = container.clientHeight || 340;
+  const fs = Math.max(8, Math.min(11, width / 32));
+  const labelW = Math.min(width * 0.38, fs * 13);
+  const margin = { top: 10, right: 12, bottom: Math.round(fs * 4.5), left: labelW };
+  const iW = Math.max(width  - margin.left - margin.right,  40);
+  const iH = Math.max(height - margin.top  - margin.bottom, 40);
+
+  // Clip to 97th pct to suppress extreme outliers
+  const vals = data.map(d => d.assessed2022);
+  const xMax = percentile(vals, 97) * 1.05;
+
+  const xScale = d3.scaleLinear().domain([0, xMax]).range([0, iW]);
+  const yScale = d3.scaleBand().domain(categories).range([0, iH]).padding(0.3);
+
+  const fmtX = v => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${Math.round(v/1e3)}K` : `$${Math.round(v)}`;
+  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3, Math.floor(iW/55))).tickFormat(fmtX);
+
+  const svg = d3.select(container).append('svg').attr('width', width).attr('height', height);
+  const g   = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Subtle band backgrounds
+  categories.forEach((cat, i) => {
+    g.append('rect')
+      .attr('x', 0).attr('y', yScale(cat))
+      .attr('width', iW).attr('height', yScale.bandwidth())
+      .attr('fill', i % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'transparent');
+  });
+
+  // X axis
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
+  xAxisG.selectAll('text').style('font-size', fs+'px');
+
+  // Y axis — category labels
+  const yAxisG = g.append('g').attr('class','axis');
+  categories.forEach(cat => {
+    const y = yScale(cat) + yScale.bandwidth() / 2;
+    const maxChars = Math.floor(labelW / (fs * 0.58));
+    const label = cat.length > maxChars ? cat.slice(0, maxChars - 1) + '…' : cat;
+    g.append('text')
+      .attr('x', -6).attr('y', y).attr('dy', '0.35em')
+      .attr('text-anchor', 'end')
+      .style('font-size', fs + 'px')
+      .style('fill', '#5a5a7a')
+      .text(label);
+  });
+
+  // Median tick per category
+  const bandwidth = yScale.bandwidth();
+  const dotR = Math.max(2, Math.min(3.5, bandwidth / 7));
+
+  // Prepare node positions: start x at scale, y at band center
+  const nodes = data.map(d => ({
     ...d,
-    _cx: Math.min(d[ax.x], xMax),
-    _cy: Math.min(d[ax.y], yMax),
-    _outlier: d[ax.x] > xMax || d[ax.y] > yMax
+    _x: Math.min(d.assessed2022, xMax),
+    _ty: yScale(d.style) + bandwidth / 2,  // target y = band center
   }));
 
-  const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0,iW]);
-  const yScale = d3.scaleLinear().domain([0, yMax]).range([iH,0]);
+  // Use force simulation to jitter Y within band, keeping X fixed
+  const halfBand = bandwidth / 2 - dotR - 1;
+  const sim = d3.forceSimulation(nodes)
+    .force('x', d3.forceX(d => xScale(d._x)).strength(1))
+    .force('y', d3.forceY(d => d._ty).strength(0.8))
+    .force('collide', d3.forceCollide(dotR + 0.5))
+    .stop();
 
-  const fmtX = d => isYearX ? Math.round(d).toString() : ax.x.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
-  const fmtY = d => ax.y.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
-  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/55))).tickFormat(fmtX);
-  const yAxis = d3.axisLeft(yScale).ticks(Math.max(3,Math.floor(iH/40))).tickFormat(fmtY);
+  // Run simulation ticks synchronously (no animation needed)
+  for (let i = 0; i < 120; i++) sim.tick();
 
-  const svg = d3.select(container).append('svg').attr('width',width).attr('height',height);
-  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
-
-  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
-  xAxisG.selectAll('text').style('font-size',fs+'px');
-  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
-  yAxisG.selectAll('text').style('font-size',fs+'px');
-
-  svg.append('text').attr('text-anchor','middle').attr('x',margin.left+iW/2).attr('y',height-2)
-    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.x]||ax.x);
-  svg.append('text').attr('text-anchor','middle').attr('transform','rotate(-90)').attr('x',-(margin.top+iH/2)).attr('y',fs+1)
-    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.y]||ax.y);
-
-  const dotR = Math.max(2,Math.min(4,width/80));
-  const dots = g.append('g').attr('class','dots');
-  dots.selectAll('circle').data(clipped).enter().append('circle')
-    .attr('class','dot').attr('cx',d=>xScale(d._cx)).attr('cy',d=>yScale(d._cy))
-    .attr('r',d=>d._outlier ? dotR*0.7 : dotR)
-    .attr('fill',d=>d._outlier ? '#aaa' : COLORS[type])
-    .attr('fill-opacity',d=>d._outlier ? 0.25 : 0.5)
-    .attr('stroke',d=>d._outlier ? '#aaa' : COLORS[type]).attr('stroke-width',1)
-    .on('mouseover', function(event,d) {
-      d3.select(this).attr('r',dotR+2).attr('fill-opacity',0.9).attr('stroke-width',2);
-      const xVal = isYearX ? d[ax.x].toString() : ax.x.includes('assessed') ? `$${Math.round(d[ax.x]).toLocaleString()}` : Math.round(d[ax.x]).toLocaleString();
-      const yVal = ax.y.includes('assessed') ? `$${Math.round(d[ax.y]).toLocaleString()}` : Math.round(d[ax.y]).toLocaleString();
-      const outlierNote = d._outlier ? '<br><em style="color:#aaa">outlier — clipped to edge</em>' : '';
-      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
-        .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${outlierNote}`);
-    })
-    .on('mouseout', function() { d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1); tooltip.classed('show',false); });
-
-  const zoom = d3.zoom().scaleExtent([0.5,20]).extent([[0,0],[iW,iH]]).translateExtent([[0,0],[iW,iH]])
-    .on('zoom', event => {
-      const nx=event.transform.rescaleX(xScale), ny=event.transform.rescaleY(yScale);
-      const cx=nx.copy().domain([Math.max(isYearX?1800:0,nx.domain()[0]),Math.max(0,nx.domain()[1])]);
-      const cy=ny.copy().domain([Math.max(0,ny.domain()[0]),Math.max(0,ny.domain()[1])]);
-      xAxisG.call(xAxis.scale(cx)); xAxisG.selectAll('text').style('font-size',fs+'px');
-      yAxisG.call(yAxis.scale(cy)); yAxisG.selectAll('text').style('font-size',fs+'px');
-      dots.selectAll('circle').attr('cx',d=>cx(Math.min(d[ax.x],cx.domain()[1]))).attr('cy',d=>cy(Math.min(d[ax.y],cy.domain()[1])));
-    });
-  svg.call(zoom);
-  svg.on('dblclick.zoom', () => svg.transition().duration(750).call(zoom.transform,d3.zoomIdentity));
-}
-
-// renderBarInto: data items have { label, count, mean }
-// One bar per row (count), mean assessment shown as text label at bar end
-function renderBarInto(container, data, color) {
-  d3.select(container).selectAll('*').remove();
-  if (!data.length) return;
-  const width  = container.clientWidth  || 280;
-  
-  // Calculate SVG height based on number of bars
-  const barHeight = 24;
-  const svgHeight = Math.max(160, data.length * barHeight + 60);
-  
-  const fs = Math.max(9, Math.min(13, width / 22));
-  const margin = { top:6, right:Math.round(fs*5.5), bottom:Math.round(fs*5.5), left:Math.round(Math.min(width*0.4, fs*12)) };
-  const iW = Math.max(width  - margin.left - margin.right, 30);
-  const iH = Math.max(svgHeight - margin.top - margin.bottom, 30);
-
-  const fmtVal = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
-
-  const xScale = d3.scaleLinear().domain([0, d3.max(data,d=>d.mean)]).range([0,iW]);
-  const yScale = d3.scaleBand().domain(data.map(d=>d.label)).range([0,iH]).padding(0.2);
-
-  const fmtAxis = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
-  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/50))).tickFormat(fmtAxis);
-  const yAxis = d3.axisLeft(yScale).tickSize(0);
-
-  const svg = d3.select(container).append('svg').attr('width',width).attr('height',svgHeight);
-  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
-
-  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
-  xAxisG.selectAll('text').style('font-size',fs+'px');
-
-  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
-  yAxisG.selectAll('text').style('font-size',fs+'px').style('text-anchor','end').each(function(d) {
-    const maxChars = Math.floor(margin.left / (fs*0.6));
-    if (d && d.length > maxChars) d3.select(this).text(d.slice(0,maxChars-1)+'…');
+  // Clamp y to stay within band
+  nodes.forEach(d => {
+    d.y = Math.max(d._ty - halfBand, Math.min(d._ty + halfBand, d.y));
   });
 
-  // Single bar per row, width = count
-  const bars = g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar')
-    .attr('x',0).attr('y',d=>yScale(d.label))
-    .attr('width',d=>Math.max(0,xScale(d.mean)))
-    .attr('height',yScale.bandwidth())
-    .attr('fill',color).attr('rx',2);
-
-  // Invisible full-row hover target
-  g.selectAll('.bar-hover').data(data).enter().append('rect').attr('class','bar-hover')
-    .attr('x',0).attr('y',d=>yScale(d.label))
-    .attr('width',iW).attr('height',yScale.bandwidth())
-    .attr('fill','transparent')
-    .on('mouseover', function(event,d) {
-      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
-        .html(`<strong>${d.label}</strong><br>Count: ${d.count.toLocaleString()}<br>Mean Assessment: ${fmtVal(d.mean)}`);
-    })
-    .on('mouseout', () => tooltip.classed('show',false));
-
-  // Zoom pans the count axis, labels follow
-  const zoom = d3.zoom().scaleExtent([1,5]).translateExtent([[0,0],[iW,iH]])
-    .on('zoom', event => {
-      const nx = event.transform.rescaleX(xScale);
-      xAxisG.call(d3.axisBottom(nx).ticks(Math.max(3,Math.floor(iW/50))));
-      xAxisG.selectAll('text').style('font-size',fs+'px');
-      bars.attr('width',d=>Math.max(0,nx(d.mean)));
-    });
-  svg.call(zoom);
-}
-
-
-// ─── ResizeObserver wrapper — attaches to a container, re-renders on resize ──
-function watchAndRender(container, renderFn) {
-  if (!container) return;
-  // Store the render function so we can call it manually too
-  container._renderFn = renderFn;
-  if (container._ro) container._ro.disconnect();
-  const ro = new ResizeObserver(() => { if (container.clientWidth > 20 && container.clientHeight > 20) renderFn(); });
-  ro.observe(container);
-  container._ro = ro;
-  // Render immediately (works if container is already visible with real size)
-  renderFn();
-}
-
-// ─── Scatter ───────────────────────────────────────────────────────────────
-function updateScatter(type) {
-  const parcels = parcelData[type];
-  const ax      = scatterAxes[type];
-  const p       = STAT_PREFIX[type];
-  const container = document.getElementById(p+'Scatter');
-  if (!container || !parcels?.length) return;
-
-  const raw    = parcels.filter(q => q[ax.x]>0 && q[ax.y]>0);
-  const step   = Math.max(1, Math.ceil(raw.length/1000));
-  const sample = raw.filter((_,i) => i%step===0);
-
-  const countEl = document.getElementById(p+'-scatter-count');
-  if (countEl) countEl.textContent = ' ('+sample.length.toLocaleString()+' pts)';
-
-  watchAndRender(container, () => renderScatterInto(container, type, sample, ax));
-  scatterPending[type] = false;
-}
-
-// ─── Bar charts ────────────────────────────────────────────────────────────
-function updateResStyleMeanChart(parcels) {
-  const container = document.getElementById('resStyleMeanChart');
-  if (!container) return;
-  const grouped = {};
-  parcels.forEach(p => {
-    if (!p.style || p.style==='Unknown' || p.assessed2022<=0) return;
-    if (!grouped[p.style]) grouped[p.style]={sum:0,count:0};
-    grouped[p.style].sum   += p.assessed2022;
-    grouped[p.style].count += 1;
+  // Draw mean line per category
+  categories.forEach(cat => {
+    const catVals = data.filter(d => d.style === cat).map(d => d.assessed2022);
+    if (!catVals.length) return;
+    const mean = catVals.reduce((a,b) => a+b, 0) / catVals.length;
+    const mx = xScale(Math.min(mean, xMax));
+    const by = yScale(cat);
+    g.append('line')
+      .attr('x1', mx).attr('x2', mx)
+      .attr('y1', by + 2).attr('y2', by + bandwidth - 2)
+      .attr('stroke', '#1a1a2e').attr('stroke-width', 1.5).attr('stroke-opacity', 0.5)
+      .attr('stroke-dasharray', '3,2');
   });
-  const data = Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
-  if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.residential));
+
+  // Draw dots
+  g.selectAll('.bee-dot')
+    .data(nodes)
+    .enter().append('circle')
+    .attr('class', 'bee-dot')
+    .attr('cx', d => d.x)
+    .attr('cy', d => d.y)
+    .attr('r', dotR)
+    .attr('fill', color)
+    .attr('fill-opacity', 0.45)
+    .attr('stroke', color)
+    .attr('stroke-width', 0.5)
+    .attr('stroke-opacity', 0.6)
+    .style('cursor', 'pointer')
+    .on('mouseover', function(event, d) {
+      d3.select(this).attr('r', dotR + 2).attr('fill-opacity', 0.9).attr('stroke-width', 1.5);
+      tooltip.style('left', (event.pageX+10)+'px').style('top', (event.pageY-10)+'px').classed('show', true)
+        .html(`<strong>${d.address}</strong><br>Style: ${d.style}<br>2022 Value: ${fmtX(d.assessed2022)}`);
+    })
+    .on('mouseout', function() {
+      d3.select(this).attr('r', dotR).attr('fill-opacity', 0.45).attr('stroke-width', 0.5);
+      tooltip.classed('show', false);
+    });
+
+  // X axis label
+  svg.append('text').attr('text-anchor','middle')
+    .attr('x', margin.left + iW/2).attr('y', height - 2)
+    .style('font-size', fs+'px').style('fill','#5a5a7a').style('font-weight','600')
+    .text('2022 Assessment Value');
+
+  // Legend: dashed line = mean
+  svg.append('line')
+    .attr('x1', margin.left).attr('x2', margin.left + 18)
+    .attr('y1', height - fs * 2.2).attr('y2', height - fs * 2.2)
+    .attr('stroke', '#1a1a2e').attr('stroke-width', 1.5).attr('stroke-opacity', 0.5)
+    .attr('stroke-dasharray', '3,2');
+  svg.append('text')
+    .attr('x', margin.left + 22).attr('y', height - fs * 2.2)
+    .attr('dy', '0.35em')
+    .style('font-size', (fs - 1)+'px').style('fill','#5a5a7a')
+    .text('mean');
 }
 
-function updateCondoNeighborhoodChart(parcels) {
-  const container = document.getElementById('condoNeighborhoodChart');
-  if (!container) return;
-  const grouped={};
-  parcels.forEach(p=>{ if(p.neighborhood&&p.neighborhood!=='Unknown'&&p.assessed2022>0){
-    if(!grouped[p.neighborhood]) grouped[p.neighborhood]={sum:0,count:0};
-    grouped[p.neighborhood].sum+=p.assessed2022; grouped[p.neighborhood].count+=1;
-  }});
-  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
-  if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
-}
-
-function updateStateUseChart(type, parcels) {
-  const ids = { condo:'condoStateUseChart', commercial:'commercialStateUseChart', vacant:'vacantStateUseChart' };
-  const container = document.getElementById(ids[type]);
-  if (!container) return;
-  const grouped={};
-  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
-    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
-    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
-  }});
-  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
-  if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS[type]));
-}
-
+// ═══════════════════════════════════════════════════════════════════════════
+// COMMERCIAL ZONE CHART (left panel)
+// ═══════════════════════════════════════════════════════════════════════════
 function updateCommercialZoneChart(parcels) {
   const container = document.getElementById('commercialClassChart');
   if (!container) return;
-  const grouped={};
-  parcels.forEach(p=>{ if(p.zone&&p.zone!=='Unknown'&&p.assessed2022>0){
-    if(!grouped[p.zone]) grouped[p.zone]={sum:0,count:0};
-    grouped[p.zone].sum+=p.assessed2022; grouped[p.zone].count+=1;
-  }});
-  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
+  const grouped = {};
+  parcels.forEach(p => {
+    if (!p.zone || p.zone === 'Unknown' || p.assessed2022 <= 0) return;
+    if (!grouped[p.zone]) grouped[p.zone] = { sum: 0, count: 0 };
+    grouped[p.zone].sum   += p.assessed2022;
+    grouped[p.zone].count += 1;
+  });
+  const data = Object.entries(grouped).map(([label,{sum,count}]) => ({label, count, mean: sum/count})).sort((a,b) => b.mean - a.mean);
   if (!data.length) return;
   watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
 }
-function updateCommercialStyleChart(parcels) {
-  const container = document.getElementById('commercialStyleChart');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RIGHT PANEL BAR CHART (field-switchable via dropdown)
+// ═══════════════════════════════════════════════════════════════════════════
+// Maps dropdown option values → parcel data field keys
+const RIGHT_BAR_FIELDS = {
+  residential: { style:'Style Description', neighborhood:'Neighborhood', zone:'Zone', stateUse:'State Use', frame:'Frame Type' },
+  condo:       { stateUse:'State Use', style:'Style Description', zone:'Zone', frame:'Frame Type' },
+  commercial:  { stateUse:'State Use', style:'Style Description', zone:'Zone', neighborhood:'Neighborhood', frame:'Frame Type' },
+  vacant:      { stateUse:'State Use', zone:'Zone', neighborhood:'Neighborhood' },
+};
+
+window.updateRightBarChart = function(type, field) {
+  const containerId = `${type === 'residential' ? 'res' : type}RightBarChart`;
+  const container   = document.getElementById(containerId);
   if (!container) return;
+  const parcels = parcelData[type];
+  if (!parcels?.length) return;
   const grouped = {};
   parcels.forEach(p => {
-    if (!p.style || p.style === 'Unknown' || p.assessed2022 <= 0) return;
-    if (!grouped[p.style]) grouped[p.style] = { sum: 0, count: 0 };
-    grouped[p.style].sum   += p.assessed2022;
-    grouped[p.style].count += 1;
+    const val = p[field];
+    if (!val || val === 'Unknown' || p.assessed2022 <= 0) return;
+    if (!grouped[val]) grouped[val] = { sum: 0, count: 0 };
+    grouped[val].sum   += p.assessed2022;
+    grouped[val].count += 1;
   });
   const data = Object.entries(grouped)
     .map(([label, { sum, count }]) => ({ label, count, mean: sum / count }))
     .sort((a, b) => b.mean - a.mean);
   if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.condo));
-}
-function updateCommercialUseChart(parcels) {
-  const container = document.getElementById('commercialUseChart');
-  if (!container) return;
-  const grouped={};
-  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
-    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
-    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
-  }});
-  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
-  if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.commercial));
-}
-
-function updateVacantUseChart(parcels) {
-  const container = document.getElementById('vacantUseChart');
-  if (!container) return;
-  const grouped={};
-  parcels.forEach(p=>{ if(p.stateUse&&p.stateUse!=='Unknown'&&p.assessed2022>0){
-    if(!grouped[p.stateUse]) grouped[p.stateUse]={sum:0,count:0};
-    grouped[p.stateUse].sum+=p.assessed2022; grouped[p.stateUse].count+=1;
-  }});
-  const data=Object.entries(grouped).map(([label,{sum,count}])=>({label,count,mean:sum/count}))
-    .sort((a,b)=>b.mean-a.mean);
-  if (!data.length) return;
-  watchAndRender(container, () => renderBarInto(container, data, COLORS.vacant));
-}
+  watchAndRender(container, () => renderBarInto(container, data, COLORS[type]));
+};
 
 window.setScatterAxes = function(type, x, y, btn) {
   scatterAxes[type] = { x, y };
@@ -909,7 +840,7 @@ window.toggleParcelFilter = function(type) {
   map.setFilter('parcels-outline',filterExpr);
 };
 
-// Sidebar resize handles
+// ─── Resize handles ────────────────────────────────────────────────────────
 (function initResizableSidebars() {
   let isResizing=false, currentHandle=null, startX=0, startWidth=0;
   document.querySelectorAll('.resize-handle').forEach(handle => {
@@ -939,6 +870,150 @@ window.toggleParcelFilter = function(type) {
   });
 })();
 
+// ─── ResizeObserver wrapper ────────────────────────────────────────────────
+function watchAndRender(container, renderFn) {
+  if (!container) return;
+  container._renderFn = renderFn;
+  if (container._ro) container._ro.disconnect();
+  const ro = new ResizeObserver(() => { if (container.clientWidth > 20 && container.clientHeight > 20) renderFn(); });
+  ro.observe(container);
+  container._ro = ro;
+  renderFn();
+}
+
+// ─── Scatter ───────────────────────────────────────────────────────────────
+function updateScatter(type) {
+  const parcels = parcelData[type];
+  const ax      = scatterAxes[type];
+  const p       = STAT_PREFIX[type];
+  const container = document.getElementById(p+'Scatter');
+  if (!container || !parcels?.length) return;
+  const raw    = parcels.filter(q => q[ax.x]>0 && q[ax.y]>0);
+  const step   = Math.max(1, Math.ceil(raw.length/1000));
+  const sample = raw.filter((_,i) => i%step===0);
+  const countEl = document.getElementById(p+'-scatter-count');
+  if (countEl) countEl.textContent = ' ('+sample.length.toLocaleString()+' pts)';
+  watchAndRender(container, () => renderScatterInto(container, type, sample, ax));
+  scatterPending[type] = false;
+}
+
+function renderScatterInto(container, type, sample, ax) {
+  d3.select(container).selectAll('*').remove();
+  const width  = container.clientWidth  || 300;
+  const height = container.clientHeight || 260;
+  const fs = Math.max(9, Math.min(13, width / 28));
+  const margin = { top:12, right:12, bottom:Math.round(fs*4.2), left:Math.round(fs*5.2) };
+  const iW = Math.max(width  - margin.left - margin.right,  60);
+  const iH = Math.max(height - margin.top  - margin.bottom, 60);
+  const isYearX = ax.x === 'yearBuilt';
+  const xVals = sample.map(d=>d[ax.x]);
+  const yVals = sample.map(d=>d[ax.y]);
+  const xMax = isYearX ? d3.max(xVals) * 1.001 : percentile(xVals, 95) * 1.05;
+  const yMax = percentile(yVals, 95) * 1.05;
+  const xMin = isYearX ? d3.min(xVals) - 2 : 0;
+  const clipped = sample.map(d => ({
+    ...d,
+    _cx: Math.min(d[ax.x], xMax),
+    _cy: Math.min(d[ax.y], yMax),
+    _outlier: d[ax.x] > xMax || d[ax.y] > yMax
+  }));
+  const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0,iW]);
+  const yScale = d3.scaleLinear().domain([0, yMax]).range([iH,0]);
+  const fmtX = d => isYearX ? Math.round(d).toString() : ax.x.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
+  const fmtY = d => ax.y.includes('assessed') ? (d>=1e6?`$${(d/1e6).toFixed(1)}M`:d>=1e3?`$${Math.round(d/1e3)}K`:`$${Math.round(d)}`) : (d>=1e3?`${Math.round(d/1e3)}K`:Math.round(d));
+  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/55))).tickFormat(fmtX);
+  const yAxis = d3.axisLeft(yScale).ticks(Math.max(3,Math.floor(iH/40))).tickFormat(fmtY);
+  const svg = d3.select(container).append('svg').attr('width',width).attr('height',height);
+  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
+  xAxisG.selectAll('text').style('font-size',fs+'px');
+  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
+  yAxisG.selectAll('text').style('font-size',fs+'px');
+  svg.append('text').attr('text-anchor','middle').attr('x',margin.left+iW/2).attr('y',height-2)
+    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.x]||ax.x);
+  svg.append('text').attr('text-anchor','middle').attr('transform','rotate(-90)').attr('x',-(margin.top+iH/2)).attr('y',fs+1)
+    .style('font-size',fs+'px').style('fill','#5a5a7a').style('font-weight','600').text(AXIS_LABELS[ax.y]||ax.y);
+  const dotR = Math.max(2,Math.min(4,width/80));
+  const dots = g.append('g').attr('class','dots');
+  dots.selectAll('circle').data(clipped).enter().append('circle')
+    .attr('class','dot').attr('cx',d=>xScale(d._cx)).attr('cy',d=>yScale(d._cy))
+    .attr('r',d=>d._outlier ? dotR*0.7 : dotR)
+    .attr('fill',d=>d._outlier ? '#aaa' : COLORS[type])
+    .attr('fill-opacity',d=>d._outlier ? 0.25 : 0.5)
+    .attr('stroke',d=>d._outlier ? '#aaa' : COLORS[type]).attr('stroke-width',1)
+    .on('mouseover', function(event,d) {
+      d3.select(this).attr('r',dotR+2).attr('fill-opacity',0.9).attr('stroke-width',2);
+      const xVal = isYearX ? d[ax.x].toString() : ax.x.includes('assessed') ? `$${Math.round(d[ax.x]).toLocaleString()}` : Math.round(d[ax.x]).toLocaleString();
+      const yVal = ax.y.includes('assessed') ? `$${Math.round(d[ax.y]).toLocaleString()}` : Math.round(d[ax.y]).toLocaleString();
+      const outlierNote = d._outlier ? '<br><em style="color:#aaa">outlier — clipped to edge</em>' : '';
+      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+        .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${outlierNote}`);
+    })
+    .on('mouseout', function() { d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1); tooltip.classed('show',false); });
+  const zoom = d3.zoom().scaleExtent([0.5,20]).extent([[0,0],[iW,iH]]).translateExtent([[0,0],[iW,iH]])
+    .on('zoom', event => {
+      const nx=event.transform.rescaleX(xScale), ny=event.transform.rescaleY(yScale);
+      const cx=nx.copy().domain([Math.max(isYearX?1800:0,nx.domain()[0]),Math.max(0,nx.domain()[1])]);
+      const cy=ny.copy().domain([Math.max(0,ny.domain()[0]),Math.max(0,ny.domain()[1])]);
+      xAxisG.call(xAxis.scale(cx)); xAxisG.selectAll('text').style('font-size',fs+'px');
+      yAxisG.call(yAxis.scale(cy)); yAxisG.selectAll('text').style('font-size',fs+'px');
+      dots.selectAll('circle').attr('cx',d=>cx(Math.min(d[ax.x],cx.domain()[1]))).attr('cy',d=>cy(Math.min(d[ax.y],cy.domain()[1])));
+    });
+  svg.call(zoom);
+  svg.on('dblclick.zoom', () => svg.transition().duration(750).call(zoom.transform,d3.zoomIdentity));
+}
+
+// ─── Bar chart renderer ────────────────────────────────────────────────────
+function renderBarInto(container, data, color) {
+  d3.select(container).selectAll('*').remove();
+  if (!data.length) return;
+  const width  = container.clientWidth  || 280;
+  const barHeight = 24;
+  const svgHeight = Math.max(160, data.length * barHeight + 60);
+  const fs = Math.max(9, Math.min(13, width / 22));
+  const margin = { top:6, right:Math.round(fs*5.5), bottom:Math.round(fs*5.5), left:Math.round(Math.min(width*0.4, fs*12)) };
+  const iW = Math.max(width  - margin.left - margin.right, 30);
+  const iH = Math.max(svgHeight - margin.top - margin.bottom, 30);
+  const fmtVal = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+  const xScale = d3.scaleLinear().domain([0, d3.max(data,d=>d.mean)]).range([0,iW]);
+  const yScale = d3.scaleBand().domain(data.map(d=>d.label)).range([0,iH]).padding(0.2);
+  const fmtAxis = v => v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${Math.round(v/1e3)}K`:`$${Math.round(v)}`;
+  const xAxis = d3.axisBottom(xScale).ticks(Math.max(3,Math.floor(iW/50))).tickFormat(fmtAxis);
+  const yAxis = d3.axisLeft(yScale).tickSize(0);
+  const svg = d3.select(container).append('svg').attr('width',width).attr('height',svgHeight);
+  const g   = svg.append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(xAxis);
+  xAxisG.selectAll('text').style('font-size',fs+'px');
+  const yAxisG = g.append('g').attr('class','axis').call(yAxis);
+  yAxisG.selectAll('text').style('font-size',fs+'px').style('text-anchor','end').each(function(d) {
+    const maxChars = Math.floor(margin.left / (fs*0.6));
+    if (d && d.length > maxChars) d3.select(this).text(d.slice(0,maxChars-1)+'…');
+  });
+  const bars = g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar')
+    .attr('x',0).attr('y',d=>yScale(d.label))
+    .attr('width',d=>Math.max(0,xScale(d.mean)))
+    .attr('height',yScale.bandwidth())
+    .attr('fill',color).attr('rx',2);
+  g.selectAll('.bar-hover').data(data).enter().append('rect').attr('class','bar-hover')
+    .attr('x',0).attr('y',d=>yScale(d.label))
+    .attr('width',iW).attr('height',yScale.bandwidth())
+    .attr('fill','transparent')
+    .on('mouseover', function(event,d) {
+      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+        .html(`<strong>${d.label}</strong><br>Count: ${d.count.toLocaleString()}<br>Mean Assessment: ${fmtVal(d.mean)}`);
+    })
+    .on('mouseout', () => tooltip.classed('show',false));
+  const zoom = d3.zoom().scaleExtent([1,5]).translateExtent([[0,0],[iW,iH]])
+    .on('zoom', event => {
+      const nx = event.transform.rescaleX(xScale);
+      xAxisG.call(d3.axisBottom(nx).ticks(Math.max(3,Math.floor(iW/50))));
+      xAxisG.selectAll('text').style('font-size',fs+'px');
+      bars.attr('width',d=>Math.max(0,nx(d.mean)));
+    });
+  svg.call(zoom);
+}
+
+// ─── Loading / Error UI ────────────────────────────────────────────────────
 function showLoading(msg) {
   const el=document.getElementById('loading-overlay'); if(el) el.style.display='flex';
   const m=document.getElementById('loading-message'); if(m) m.textContent=msg;
