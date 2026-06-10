@@ -60,11 +60,14 @@ const VALUE_RAMP   = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
 const YEAR_RAMP    = ['#ffffcc','#a1dab4','#41b6c4','#2c7fb8','#253494'];
 const ACREAGE_RAMP = ['#edf8fb','#b3cde3','#8c96c6','#8856a7','#810f7c'];
 
+const PCT_CHANGE_RAMP = ['#648FFF','#785EF0','#DC267F','#FE6100','#FFB000'];
+
 const SYMBOLIZATION_OPTIONS = [
   { value:'Zone',                    type:'categorical', colors:ZONE_COLORS },
   { value:'Property Type',           type:'categorical', colors:PROP_TYPE_COLORS },
   { value:'Assessed Total',          type:'continuous',  colorRamp:VALUE_RAMP },
   { value:'Pre Year Assessed Total', type:'continuous',  colorRamp:VALUE_RAMP },
+  { value:'Pct Change 2020-2022',    type:'pct_change',  colorRamp:PCT_CHANGE_RAMP },
   { value:'Effective Year Built',    type:'continuous',  colorRamp:YEAR_RAMP },
   { value:'Neighborhood',            type:'categorical' },
   { value:'Style Description',       type:'categorical' },
@@ -426,6 +429,47 @@ function colorExpr(field, opt, type) {
     Object.entries(opt.colors).forEach(([val,color]) => { if (val!=='default') cases.push(val,color); });
     return ['match', ['to-string', ['get', field]], ...cases, opt.colors.default||'#94a3b8'];
   }
+  if (opt.type === 'pct_change' && opt.colorRamp) {
+    const ramp = opt.colorRamp;
+    // Compute quantile breakpoints from actual pct-change distribution
+    let thresholds = [-15, -8, -2, 2, 8, 15]; // fallback
+    if (type && parcelData[type]?.length) {
+      const parcels = parcelData[type];
+      const pctVals = parcels
+        .map(p => p.assessed2020 > 0 ? (p.assessed2022 - p.assessed2020) / p.assessed2020 * 100 : null)
+        .filter(v => v !== null)
+        .sort((a, b) => a - b);
+      if (pctVals.length >= ramp.length) {
+        const n = ramp.length;
+        const raw = [];
+        for (let i = 1; i < n; i++) {
+          const idx = Math.floor(i / n * pctVals.length);
+          raw.push(Math.round(pctVals[idx] * 10) / 10);
+        }
+        // Enforce strictly ascending (step expression requires it)
+        thresholds = [];
+        let prev = -Infinity;
+        for (const t of raw) {
+          const v = t > prev ? t : prev + 0.1;
+          thresholds.push(Math.round(v * 10) / 10);
+          prev = thresholds[thresholds.length - 1];
+        }
+      }
+      console.log(`[PctChange] type=${type} parcels=${parcels.length} valid=${pctVals.length} thresholds=`, thresholds);
+    }
+    opt._thresholds = thresholds;
+    opt._isPctChange = true;
+    // MapLibre expression: compute (assessed2022 - assessed2020) / assessed2020 * 100
+    // Only color parcels where Pre Year Assessed Total > 0; others go gray
+    const a22Expr = ['to-number', ['coalesce', ['get', 'Assessed Total'], 0]];
+    const a20Expr = ['to-number', ['coalesce', ['get', 'Pre Year Assessed Total'], 0]];
+    const pctExpr = ['*', 100, ['/', ['-', a22Expr, a20Expr], a20Expr]];
+    const stepArgs = [ramp[0]];
+    thresholds.forEach((t, i) => { stepArgs.push(t, ramp[i + 1] || ramp[ramp.length - 1]); });
+    const stepExpr = ['step', pctExpr, ...stepArgs];
+    // Guard: if a20 == 0, return gray; otherwise use the step color
+    return ['case', ['>', a20Expr, 0], stepExpr, '#cccccc'];
+  }
   if (opt.type === 'continuous' && opt.colorRamp) {
     const ramp = opt.colorRamp;
     // Compute quantile breakpoints so each bin contains ~equal parcel count
@@ -568,7 +612,24 @@ function buildLegend(field, opt, type) {
       more.innerHTML=`<span style="color:var(--ink-3);font-style:italic">↓ ${sorted.length-LEGEND_MAX} more (scroll)</span>`;
       el.appendChild(more);
     }
-  } else if (opt.type==='continuous') {
+  } else if (opt.type === 'pct_change') {
+    const ramp = opt.colorRamp || PCT_CHANGE_RAMP;
+    const thresholds = opt._thresholds || [-15, -8, -2, 2, 8, 15];
+    const edges = [-Infinity, ...thresholds, Infinity];
+    const fmtP = v => v >= 0 ? `+${v}%` : `${v}%`;
+    ramp.forEach((color, i) => {
+      const lo = edges[i];
+      const hi = edges[i + 1];
+      let label;
+      if (lo === -Infinity) label = `< ${fmtP(thresholds[0])}`;
+      else if (hi === Infinity) label = `> ${fmtP(thresholds[thresholds.length - 1])}`;
+      else label = `${fmtP(lo)} – ${fmtP(hi)}`;
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<div class="legend-swatch" style="background:${color}"></div><span>${label}</span>`;
+      el.appendChild(item);
+    });
+  } else if (opt.type === 'continuous') {
     const ramp = opt.colorRamp || VALUE_RAMP;
     const thresholds = opt._thresholds || [];
     const parcels = parcelData[type] || [];
@@ -1251,6 +1312,7 @@ function renderScatterInto(container, type, sample, ax) {
   const isCat       = symOpt && symOpt.type === 'categorical' && symOpt.colors && dataField;
   // Continuous fields → color by quantile bin (same bins as map)
   const isCont      = symOpt && symOpt.type === 'continuous' && symOpt.colorRamp;
+  const isPctChange = symOpt && symOpt.type === 'pct_change' && symOpt.colorRamp;
   const contFieldMap = {
     'Assessed Total':'assessed2022', 'Pre Year Assessed Total':'assessed2020',
     'Effective Year Built':'yearBuilt', 'Land Acres':'acreage'
@@ -1260,6 +1322,12 @@ function renderScatterInto(container, type, sample, ax) {
   let contScale = null;
   if (isCont && contDataField && symOpt._thresholds?.length) {
     contScale = d3.scaleThreshold()
+      .domain(symOpt._thresholds)
+      .range(symOpt.colorRamp);
+  }
+  let pctScale = null;
+  if (isPctChange && symOpt._thresholds?.length) {
+    pctScale = d3.scaleThreshold()
       .domain(symOpt._thresholds)
       .range(symOpt.colorRamp);
   }
@@ -1274,6 +1342,13 @@ function renderScatterInto(container, type, sample, ax) {
     if (isCont && contScale && contDataField) {
       const v = d[contDataField];
       return (v !== undefined && v !== null && v > 0) ? contScale(v) : '#ccc';
+    }
+    if (isPctChange && pctScale) {
+      if (d.assessed2020 > 0) {
+        const pct = (d.assessed2022 - d.assessed2020) / d.assessed2020 * 100;
+        return pctScale(pct);
+      }
+      return '#ccc';
     }
     return COLORS[type];
   }
@@ -1387,6 +1462,19 @@ function renderScatterInto(container, type, sample, ax) {
       return `<span class="sc-leg-item"><span class="sc-leg-dot" style="background:${color}"></span>${label}</span>`;
     }).join('');
     legendDiv.innerHTML = `<span class="sc-leg-title">Color: ${symField}</span>${swatches}`;
+    legendDiv.style.display = 'flex';
+  } else if (isPctChange && symOpt._thresholds?.length) {
+    const ramp = symOpt.colorRamp;
+    const fmtP = v => v >= 0 ? `+${v}%` : `${v}%`;
+    const swatches = ramp.map((color, i) => {
+      const lo = i === 0 ? null : symOpt._thresholds[i-1];
+      const hi = symOpt._thresholds[i];
+      const label = hi === undefined ? `${fmtP(symOpt._thresholds[i-1])}+` :
+                    lo === null      ? `< ${fmtP(hi)}` :
+                    `${fmtP(lo)}–${fmtP(hi)}`;
+      return `<span class="sc-leg-item"><span class="sc-leg-dot" style="background:${color}"></span>${label}</span>`;
+    }).join('');
+    legendDiv.innerHTML = `<span class="sc-leg-title">Color: 2020–2022 Δ%</span>${swatches}`;
     legendDiv.style.display = 'flex';
   } else {
     legendDiv.style.display = 'none';
