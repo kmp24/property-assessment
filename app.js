@@ -608,7 +608,6 @@ function buildLegend(field, opt, type) {
   el.innerHTML = '';
   if (!opt) return;
   if (opt.type==='categorical' && opt.colors) {
-    const LEGEND_MAX = 12;
     const entries = Object.entries(opt.colors).filter(([k])=>k!=='default');
     const parcels  = parcelData[type]||[];
     const fieldMap = {'Neighborhood':'neighborhood','Style Description':'style','State Use Description':'stateUse','Zone':'zone','Property Type':'type'};
@@ -616,16 +615,11 @@ function buildLegend(field, opt, type) {
     const counts={};
     parcels.forEach(p=>{ const v=p[dataField]; if(v&&v!=='Unknown') counts[String(v)]=(counts[String(v)]||0)+1; });
     const sorted = entries.map(([val,color])=>({val,color,count:counts[val]||0})).sort((a,b)=>b.count-a.count);
-    sorted.slice(0, LEGEND_MAX).forEach(({val,color})=>{
+    sorted.forEach(({val,color,count})=>{
       const item=document.createElement('div'); item.className='legend-item';
       item.innerHTML=`<div class="legend-swatch" style="background:${color}"></div><span>${val}</span>`;
       el.appendChild(item);
     });
-    if (sorted.length > LEGEND_MAX) {
-      const more=document.createElement('div'); more.className='legend-item legend-more';
-      more.innerHTML=`<span style="color:var(--ink-3);font-style:italic">↓ ${sorted.length-LEGEND_MAX} more (scroll)</span>`;
-      el.appendChild(more);
-    }
   } else if (opt.type === 'pct_change') {
     const ramp = opt.colorRamp || PCT_CHANGE_RAMP;
     const thresholds = opt._thresholds || [-15, -8, -2, 2, 8, 15];
