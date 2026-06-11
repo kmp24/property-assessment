@@ -202,7 +202,7 @@ async function initializeMaps() {
 }
 
 function addMapLayers(map, sourceLayer = 'parcels') {
-  map.addLayer({ id:'parcels-fill', type:'fill', source:'parcels', 'source-layer':sourceLayer,
+    map.addLayer({ id:'parcels-fill', type:'fill', source:'parcels', 'source-layer':sourceLayer,
     paint:{
       'fill-color': colorExpr('Zone', SYMBOLIZATION_OPTIONS.find(o => o.value==='Zone')),
       'fill-opacity': ['case', ['boolean',['feature-state','hover'],false], 0.9, 0.7]
@@ -254,6 +254,7 @@ function attachMapHandlers(map, type, sourceLayer) {
     setSelectedParcelHighlight(map, sourceLayer, pid, type);
     selectedParcelId[type] = pid;
   });
+
 }
 
 function setSelectedParcelHighlight(map, sourceLayer, parcelId, type) {
