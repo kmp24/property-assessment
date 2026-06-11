@@ -541,6 +541,19 @@ window.changeMapSymbolization = function(map, type, field) {
   if (type === activeTab) updateScatter(type);
   // Expose opt on the symbolization state so scatter legend can read colors
   mapSymbolizationOpt[type] = opt;
+  // Re-render beeswarms so dot colors stay in sync
+  if (type === 'residential' || type === 'condo') {
+    const parcels = parcelData[type];
+    if (parcels?.length) {
+      if (type === 'residential') {
+        if (activeBeeswarm.residential === 'style') updateResBeeswarm(parcels);
+        else updateResBedroomBeeswarm(parcels);
+      } else {
+        if (activeBeeswarm.condo === 'style') updateCondoBeeswarm(parcels);
+        else updateCondoBedroomBeeswarm(parcels);
+      }
+    }
+  }
 };
 
 function getUniqueValuesForField(type, field) {
@@ -933,7 +946,9 @@ function updateResBeeswarm(parcels) {
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.residential, 'style'));
+  const _beeOpt_res = mapSymbolizationOpt['residential'];
+  const _beeColorFn_res = buildBeeswarmColorFn(_beeOpt_res, 'residential');
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.residential, 'style', _beeColorFn_res));
 }
 function updateResBedroomBeeswarm(parcels) {
   const container = document.getElementById('resBeeswarmBedroom');
@@ -946,7 +961,9 @@ function updateResBedroomBeeswarm(parcels) {
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.residential, 'bedrooms'));
+  const _beeOpt_resBed = mapSymbolizationOpt['residential'];
+  const _beeColorFn_resBed = buildBeeswarmColorFn(_beeOpt_resBed, 'residential');
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.residential, 'bedrooms', _beeColorFn_resBed));
 }
 function updateCondoBeeswarm(parcels) {
   const container = document.getElementById('condoBeeswarm');
@@ -959,7 +976,9 @@ function updateCondoBeeswarm(parcels) {
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.condo, 'style'));
+  const _beeOpt_condo = mapSymbolizationOpt['condo'];
+  const _beeColorFn_condo = buildBeeswarmColorFn(_beeOpt_condo, 'condo');
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topStyles, COLORS.condo, 'style', _beeColorFn_condo));
 }
 function updateCondoBedroomBeeswarm(parcels) {
   const container = document.getElementById('condoBeeswarmBedroom');
@@ -972,10 +991,45 @@ function updateCondoBedroomBeeswarm(parcels) {
   const step = Math.max(1, Math.ceil(filtered.length / 600));
   const sample = filtered.filter((_,i) => i % step === 0);
   if (!sample.length) return;
-  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.condo, 'bedrooms'));
+  const _beeOpt_condoBed = mapSymbolizationOpt['condo'];
+  const _beeColorFn_condoBed = buildBeeswarmColorFn(_beeOpt_condoBed, 'condo');
+  watchAndRender(container, () => renderBeeswarmInto(container, sample, topBeds, COLORS.condo, 'bedrooms', _beeColorFn_condoBed));
 }
 
-function renderBeeswarmInto(container, data, categories, color, groupKey) {
+function buildBeeswarmColorFn(symOpt, type) {
+  if (!symOpt) return null;
+  // Categorical
+  if (symOpt.type === 'categorical' && symOpt.colors) {
+    const fieldMap = { 'Zone':'zone', 'Property Type':'propertyType', 'Neighborhood':'neighborhood',
+      'Style Description':'style', 'State Use Description':'stateUse' };
+    const df = fieldMap[symOpt.value];
+    if (!df) return null;
+    return d => {
+      const key = d[df];
+      return (key && symOpt.colors[key]) ? symOpt.colors[key] : (symOpt.colors['default'] || COLORS[type]);
+    };
+  }
+  // Continuous
+  if (symOpt.type === 'continuous' && symOpt.colorRamp && symOpt._thresholds?.length) {
+    const contFieldMap = { 'Assessed Total':'assessed2022', 'Pre Year Assessed Total':'assessed2020',
+      'Effective Year Built':'yearBuilt', 'Land Acres':'acreage' };
+    const df = contFieldMap[symOpt.value];
+    if (!df) return null;
+    const scale = d3.scaleThreshold().domain(symOpt._thresholds).range(symOpt.colorRamp);
+    return d => { const v = d[df]; return (v > 0) ? scale(v) : '#ccc'; };
+  }
+  // Pct change
+  if (symOpt.type === 'pct_change' && symOpt.colorRamp && symOpt._thresholds?.length) {
+    const scale = d3.scaleThreshold().domain(symOpt._thresholds).range(symOpt.colorRamp);
+    return d => {
+      if (d.assessed2020 > 0) return scale((d.assessed2022 - d.assessed2020) / d.assessed2020 * 100);
+      return '#ccc';
+    };
+  }
+  return null;
+}
+
+function renderBeeswarmInto(container, data, categories, color, groupKey, colorFn) {
   groupKey = groupKey || 'style';
   d3.select(container).selectAll('*').remove();
   const width  = container.clientWidth  || 340;
@@ -1078,9 +1132,9 @@ function renderBeeswarmInto(container, data, categories, color, groupKey) {
     .attr('cx', d => d.x)
     .attr('cy', d => d.y)
     .attr('r', dotR)
-    .attr('fill', d => useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color)
+    .attr('fill', d => colorFn ? colorFn(d) : (useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color))
     .attr('fill-opacity', 0.45)
-    .attr('stroke', d => useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color)
+    .attr('stroke', d => colorFn ? colorFn(d) : (useNeighborhoodColor ? (neighborhoodColorMap[d.neighborhood] || color) : color))
     .attr('stroke-width', 0.5)
     .attr('stroke-opacity', 0.6)
     .style('cursor', 'pointer')
