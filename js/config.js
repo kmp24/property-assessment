@@ -1,0 +1,62 @@
+'use strict';
+
+const STAT_PREFIX = {
+  residential: 'res', condo: 'condo', commercial: 'commercial', vacant: 'vacant'
+};
+
+const COLORS = {
+  residential: '#EE7733', condo: '#0077BB', commercial: '#33BBEE', vacant: '#009988'
+};
+
+const ZONE_COLORS = {
+  'R-13': '#EE7733', 'R-20': '#0077BB', 'R-40': '#CC3311',
+  'R-80': '#009988', 'B': '#EE3377', 'I': '#BBBBBB', 'default': '#33BBEE'
+};
+
+const PROP_TYPE_COLORS = {
+  'Residential': '#EE7733', 'Condo': '#0077BB', 'Commercial': '#33BBEE',
+  'Vacant': '#009988', 'default': '#BBBBBB'
+};
+
+const CATEGORICAL_PALETTE = [
+  '#EE7733','#0077BB','#33BBEE','#EE3377','#CC3311','#009988',
+  '#BBBBBB','#AA3377','#228833','#CCBB44','#AA7744','#4477AA',
+];
+
+const VALUE_RAMP   = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
+const YEAR_RAMP    = ['#ffffcc','#a1dab4','#41b6c4','#2c7fb8','#253494'];
+const ACREAGE_RAMP = ['#edf8fb','#b3cde3','#8c96c6','#8856a7','#810f7c'];
+const PCT_CHANGE_RAMP = ['#648FFF','#785EF0','#DC267F','#FE6100','#FFB000'];
+
+const SYMBOLIZATION_OPTIONS = [
+  { value:'Zone',                    type:'categorical', colors:ZONE_COLORS },
+  { value:'Property Type',           type:'categorical', colors:PROP_TYPE_COLORS },
+  { value:'Assessed Total',          type:'continuous',  colorRamp:VALUE_RAMP },
+  { value:'Pre Year Assessed Total', type:'continuous',  colorRamp:VALUE_RAMP },
+  { value:'Pct Change 2020-2022',    type:'pct_change',  colorRamp:PCT_CHANGE_RAMP },
+  { value:'Effective Year Built',    type:'continuous',  colorRamp:YEAR_RAMP },
+  { value:'Neighborhood',            type:'categorical' },
+  { value:'Style Description',       type:'categorical' },
+  { value:'State Use Description',   type:'categorical' },
+  { value:'Land Acres',              type:'continuous',  colorRamp:ACREAGE_RAMP },
+];
+
+const AXIS_LABELS = {
+  sqft:'Living Area (sf)', acreage:'Acreage (ac)', yearBuilt:'Effective Year Built',
+  assessed2020:'2020 Assessment', assessed2022:'2022 Assessment'
+};
+
+const RIGHT_BAR_FIELDS = {
+  residential: { style:'Style Description', neighborhood:'Neighborhood', zone:'Zone', stateUse:'State Use', frame:'Frame Type' },
+  condo:       { stateUse:'State Use', style:'Style Description', zone:'Zone', frame:'Frame Type' },
+  commercial:  { stateUse:'State Use', style:'Style Description', zone:'Zone', neighborhood:'Neighborhood', frame:'Frame Type' },
+  vacant:      { stateUse:'State Use', zone:'Zone', neighborhood:'Neighborhood' },
+};
+
+function percentile(arr, p) {
+  if (!arr.length) return 0;
+  const sorted = arr.slice().sort((a,b) => a-b);
+  const idx = (p/100) * (sorted.length - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
