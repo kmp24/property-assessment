@@ -40,7 +40,7 @@ function updateChartsForType(type) {
 
 // ─── Beeswarm toggle state ────────────────────────────────────────────────────
 
-const activeBeeswarm = { residential: 'style', condo: 'style' };
+var activeBeeswarm = { residential: 'style', condo: 'style' };
 
 window.switchResBeeswarm = function(mode, btn) {
   activeBeeswarm.residential = mode;
@@ -233,12 +233,12 @@ function renderBeeswarmInto(container, data, categories, color, groupKey, colorF
     .on('mouseover', function(event, d) {
       d3.select(this).attr('r', dotR + 2).attr('fill-opacity', 0.9).attr('stroke-width', 1.5);
       const groupLabel = groupKey === 'bedrooms' ? `Bedrooms: ${d[groupKey]}` : `${groupKey.charAt(0).toUpperCase()+groupKey.slice(1)}: ${d[groupKey]}`;
-      tooltip.style('left', (event.pageX+10)+'px').style('top', (event.pageY-10)+'px').classed('show', true)
+      d3Tooltip.style('left', (event.pageX+10)+'px').style('top', (event.pageY-10)+'px').classed('show', true)
         .html(`<strong>${d.address}</strong><br>${groupLabel}<br>Neighborhood: ${d.neighborhood}<br>2022 Value: ${fmtX(d.assessed2022)}`);
     })
     .on('mouseout', function() {
       d3.select(this).attr('r', dotR).attr('fill-opacity', 0.45).attr('stroke-width', 0.5);
-      tooltip.classed('show', false);
+      d3Tooltip.classed('show', false);
     });
 
   svg.append('text').attr('text-anchor','middle')
@@ -422,12 +422,12 @@ function renderScatterInto(container, type, sample, ax) {
           '$'+Math.round(d[contDataField]).toLocaleString();
         colorInfo = `<br>${symField}: ${fmtV}`;
       }
-      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+      d3Tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
         .html(`<strong>${d.address}</strong><br>${AXIS_LABELS[ax.x]||ax.x}: ${xVal}<br>${AXIS_LABELS[ax.y]||ax.y}: ${yVal}${colorInfo}${outlierNote}`);
     })
     .on('mouseout', function() {
       d3.select(this).attr('r',d=>d._outlier?dotR*0.7:dotR).attr('fill-opacity',d=>d._outlier?0.25:0.5).attr('stroke-width',1);
-      tooltip.classed('show',false);
+      d3Tooltip.classed('show',false);
     });
 
   // Zoom
@@ -542,12 +542,12 @@ function renderBarInto(container, data, color, type, field, activeVal) {
     .on('click', d => { applyBarFilter(type, field, d.label); updateChartsForType(type); })
     .on('mouseover', function(event, d) {
       d3.select(this).attr('fill-opacity',1);
-      tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
+      d3Tooltip.style('left',(event.pageX+10)+'px').style('top',(event.pageY-10)+'px').classed('show',true)
         .html(`<strong>${d.label}</strong><br>Mean: ${fmtV(d.mean)}<br>Count: ${d.count.toLocaleString()}`);
     })
     .on('mouseout', function(event, d) {
       d3.select(this).attr('fill-opacity', d.label === activeVal ? 1.0 : 0.7);
-      tooltip.classed('show',false);
+      d3Tooltip.classed('show',false);
     });
 
   // Value labels on bars

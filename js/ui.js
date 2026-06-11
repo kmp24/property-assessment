@@ -146,15 +146,16 @@ function setText(id, val) {
 // ─── Resizable sidebars ───────────────────────────────────────────────────────
 
 (function initResizableSidebars() {
-  let isResizing=false, currentHandle=null, startX=0, startWidth=0;
-  document.querySelectorAll('.resize-handle').forEach(handle => {
-    handle.addEventListener('mousedown', e => {
-      isResizing=true; currentHandle=handle; startX=e.clientX;
-      startWidth=handle.parentElement.offsetWidth;
-      handle.classList.add('resizing');
-      document.body.style.cursor='ew-resize'; document.body.style.userSelect='none';
-      e.preventDefault();
-    });
+  var isResizing=false, currentHandle=null, startX=0, startWidth=0;
+  // Use event delegation on document so handles work even inside hidden/lazy-init panels
+  document.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.resize-handle');
+    if (!handle) return;
+    isResizing=true; currentHandle=handle; startX=e.clientX;
+    startWidth=handle.parentElement.offsetWidth;
+    handle.classList.add('resizing');
+    document.body.style.cursor='ew-resize'; document.body.style.userSelect='none';
+    e.preventDefault();
   });
   document.addEventListener('mousemove', e => {
     if (!isResizing||!currentHandle) return;
