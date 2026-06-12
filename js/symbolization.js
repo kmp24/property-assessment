@@ -122,6 +122,16 @@ function colorExpr(field, opt, type) {
 
 // ─── Categorical color helpers ────────────────────────────────────────────────
 
+// Fields that should have consistent colors across all tabs
+var CROSS_TAB_FIELDS = new Set([
+  "Zone",
+  "Property Type",
+  "Neighborhood",
+  "Style Description",
+  "State Use Description",
+  "Frame Type",
+]);
+
 function getUniqueValuesForField(type, field) {
   const fieldMap = {
     Neighborhood: "neighborhood",
@@ -132,28 +142,20 @@ function getUniqueValuesForField(type, field) {
     "Frame Type": "frame",
   };
   const dataField = fieldMap[field] || field;
-  const parcels = parcelData[type] || [];
   const values = new Set();
-  parcels.forEach((p) => {
-    const v = p[dataField];
-    if (v && v !== "Unknown" && v !== "") values.add(String(v));
-  });
-  const maps = {
-    residential: residentialMap,
-    condo: condoMap,
-    commercial: commercialMap,
-    vacant: vacantMap,
-  };
-  const map = maps[type];
-  if (map && map.getSource("parcels")) {
-    const features = map.querySourceFeatures("parcels", {
-      sourceLayer: _sourceLayerName,
-    });
-    features.forEach((f) => {
-      const v = f.properties[field];
+
+  // For cross-tab fields, collect from ALL types so colors are consistent across tabs
+  const typesToScan = CROSS_TAB_FIELDS.has(field)
+    ? ["residential", "condo", "commercial", "vacant"]
+    : [type];
+
+  typesToScan.forEach((t) => {
+    (parcelData[t] || []).forEach((p) => {
+      const v = p[dataField];
       if (v && v !== "Unknown" && v !== "") values.add(String(v));
     });
-  }
+  });
+
   return Array.from(values).sort();
 }
 
@@ -283,7 +285,10 @@ window.changeMapSymbolization = function (map, type, field) {
   let opt = baseOpt ? { ...baseOpt } : { value: field, type: "categorical" };
 
   if (opt.type === "categorical") {
-    const cacheKey = type + ":" + field;
+    // Cross-tab fields share one color cache so Zone/Neighborhood etc. are consistent across tabs
+    const cacheKey = CROSS_TAB_FIELDS.has(field)
+      ? "global:" + field
+      : type + ":" + field;
     if (!categoricalColorCache[cacheKey]) {
       categoricalColorCache[cacheKey] = generateCategoricalColors(
         getUniqueValuesForField(type, field),

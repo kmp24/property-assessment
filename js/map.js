@@ -346,6 +346,12 @@ async function collectParcelData(sourceLayer = "parcels") {
   });
 
   setTimeout(() => {
+    // Invalidate shared color caches now that all parcel data is loaded
+    // so cross-tab fields (Zone, Neighborhood etc.) get colors from the full dataset
+    Object.keys(categoricalColorCache).forEach((k) => {
+      if (k.startsWith("global:")) delete categoricalColorCache[k];
+    });
+
     // Apply symbolization now that parcel data is loaded (dynamic colors need the data)
     const maps = {
       residential: residentialMap,
