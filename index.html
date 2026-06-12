@@ -1,771 +1,2021 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Property Assessment Value Dashboard</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Property Assessment Value Dashboard</title>
 
-<!-- External Dependencies -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
-<script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- External Dependencies -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+    />
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 
-<style>
-/* ═══════════════════════════════════════════════════════════════════════════
+    <style>
+      /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN TOKENS
    ═══════════════════════════════════════════════════════════════════════════ */
-:root {
-  --ink:        #1a1a2e;
-  --ink-2:      #2d2d44;
-  --ink-3:      #5a5a7a;
-  --paper:      #f7f4ef;
-  --paper-2:    #ede9e0;
-  --paper-3:    #ddd8cc;
-  --accent:     #EE7733;
-  --accent-2:   #fd8d3c;
-  --res:        #EE7733;
-  --condo:      #0077BB;
-  --comm:       #33BBEE;
-  --vacant:     #009988;
-  --card-r: 12px;
-  --shadow: 0 2px 16px rgba(26,26,46,.08);
-  --shadow-lg: 0 8px 40px rgba(26,26,46,.14);
-  --mono: 'DM Mono', monospace;
-  --sans: 'DM Sans', sans-serif;
-  --serif: 'Playfair Display', serif;
-}
+      :root {
+        --ink: #1a1a2e;
+        --ink-2: #2d2d44;
+        --ink-3: #5a5a7a;
+        --paper: #f7f4ef;
+        --paper-2: #ede9e0;
+        --paper-3: #ddd8cc;
+        --accent: #ee7733;
+        --accent-2: #fd8d3c;
+        --res: #ee7733;
+        --condo: #0077bb;
+        --comm: #33bbee;
+        --vacant: #009988;
+        --card-r: 12px;
+        --shadow: 0 2px 16px rgba(26, 26, 46, 0.08);
+        --shadow-lg: 0 8px 40px rgba(26, 26, 46, 0.14);
+        --mono: "DM Mono", monospace;
+        --sans: "DM Sans", sans-serif;
+        --serif: "Playfair Display", serif;
+      }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: var(--sans); color: var(--ink); background: var(--paper); }
-button { cursor: pointer; border: none; background: none; font-family: inherit; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+        font-family: var(--sans);
+        color: var(--ink);
+        background: var(--paper);
+      }
+      button {
+        cursor: pointer;
+        border: none;
+        background: none;
+        font-family: inherit;
+      }
 
-#loading-overlay {
-  position: fixed; inset: 0; z-index: 9999;
-  background: var(--ink);
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; gap: 1.5rem;
-}
-.loader-logo { font-family: var(--serif); font-size: 2rem; color: var(--paper); letter-spacing: .02em; }
-.loader-sub  { font-family: var(--mono); font-size: .75rem; color: var(--ink-3); letter-spacing: .1em; text-transform: uppercase; }
-.loader-bar  { width: 200px; height: 2px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
-.loader-fill { height: 100%; background: var(--accent); width: 30%; animation: fill 1.8s ease-in-out infinite alternate; }
-@keyframes fill { to { width: 90%; } }
+      #loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+      .loader-logo {
+        font-family: var(--serif);
+        font-size: 2rem;
+        color: var(--paper);
+        letter-spacing: 0.02em;
+      }
+      .loader-sub {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--ink-3);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .loader-bar {
+        width: 200px;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .loader-fill {
+        height: 100%;
+        background: var(--accent);
+        width: 30%;
+        animation: fill 1.8s ease-in-out infinite alternate;
+      }
+      @keyframes fill {
+        to {
+          width: 90%;
+        }
+      }
 
-#landing {
-  position: fixed; inset: 0; z-index: 100;
-  background: var(--ink);
-  display: flex; flex-direction: column;
-  overflow-y: auto;
-}
-.landing-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 1.5rem 3rem;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-}
-.landing-brand { font-family: var(--serif); font-size: 1.25rem; color: var(--paper); }
-.landing-badge {
-  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
-  letter-spacing: .1em; text-transform: uppercase;
-  border: 1px solid rgba(200,75,49,.4); border-radius: 20px; padding: .25rem .75rem;
-}
-.landing-hero {
-  flex: 1; display: flex; align-items: center; padding: 5rem 3rem 3rem;
-  gap: 6rem; max-width: 1400px; margin: 0 auto; width: 100%;
-}
-.hero-text { flex: 1.2; min-width: 0; }
-.hero-eyebrow {
-  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
-  letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1.5rem;
-  display: flex; align-items: center; gap: .75rem;
-}
-.hero-eyebrow::before { content: ''; display: block; width: 2rem; height: 1px; background: var(--accent-2); }
-.hero-title {
-  font-family: var(--serif); font-size: clamp(3rem, 5vw, 5rem);
-  color: var(--paper); line-height: 1.05; margin-bottom: 2rem; font-weight: 900;
-}
-.hero-title em { color: var(--accent-2); font-style: normal; }
-.hero-desc {
-  font-size: 1.05rem; line-height: 1.75; color: rgba(247,244,239,.6);
-  max-width: 540px; margin-bottom: 3rem; font-weight: 300;
-}
-.hero-cta {
-  display: inline-flex; align-items: center; gap: 1rem;
-  background: var(--accent); color: white;
-  font-family: var(--sans); font-weight: 600; font-size: 1rem;
-  padding: 1rem 2rem; border-radius: 6px;
-  transition: transform .15s, box-shadow .15s;
-}
-.hero-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(198,75,49,.4); }
-.hero-cta svg { transition: transform .2s; }
-.hero-cta:hover svg { transform: translateX(4px); }
-.hero-stats {
-  flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
-  background: rgba(255,255,255,.06); border-radius: var(--card-r); overflow: hidden;
-  align-self: stretch; max-height: 380px;
-}
-.hero-stat {
-  background: rgba(255,255,255,.03); padding: 2rem 1.5rem;
-  display: flex; flex-direction: column; justify-content: center;
-  border: none; text-align: left; transition: background .2s;
-}
-.hero-stat:hover { background: rgba(255,255,255,.07); }
-.hero-stat-value { font-family: var(--mono); font-size: 1.6rem; font-weight: 500; margin-bottom: .4rem; }
-.hero-stat-label { font-size: .8rem; color: rgba(247,244,239,.45); text-transform: uppercase; letter-spacing: .06em; }
-.res-color  { color: var(--res); }
-.condo-color{ color: var(--condo); }
-.comm-color { color: var(--comm); }
-.vac-color  { color: var(--vacant); }
-.landing-features {
-  border-top: 1px solid rgba(255,255,255,.06);
-  padding: 3rem;
-  display: flex; gap: 3rem; max-width: 1400px; margin: 0 auto; width: 100%;
-}
-.feature { flex: 1; display: flex; gap: 1rem; align-items: flex-start; }
-.feature-icon {
-  width: 36px; height: 36px; border-radius: 8px;
-  background: rgba(200,75,49,.15); display: flex; align-items: center; justify-content: center;
-  color: var(--accent-2); font-size: 1rem; flex-shrink: 0;
-}
-.feature-title { font-size: .9rem; font-weight: 600; color: var(--paper); margin-bottom: .3rem; }
-.feature-desc  { font-size: .8rem; color: rgba(247,244,239,.4); line-height: 1.6; }
+      #landing {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: var(--ink);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+      .landing-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.5rem 3rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .landing-brand {
+        font-family: var(--serif);
+        font-size: 1.25rem;
+        color: var(--paper);
+      }
+      .landing-badge {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--accent-2);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid rgba(200, 75, 49, 0.4);
+        border-radius: 20px;
+        padding: 0.25rem 0.75rem;
+      }
+      .landing-hero {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding: 5rem 3rem 3rem;
+        gap: 6rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+      }
+      .hero-text {
+        flex: 1.2;
+        min-width: 0;
+      }
+      .hero-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--accent-2);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .hero-eyebrow::before {
+        content: "";
+        display: block;
+        width: 2rem;
+        height: 1px;
+        background: var(--accent-2);
+      }
+      .hero-title {
+        font-family: var(--serif);
+        font-size: clamp(3rem, 5vw, 5rem);
+        color: var(--paper);
+        line-height: 1.05;
+        margin-bottom: 2rem;
+        font-weight: 900;
+      }
+      .hero-title em {
+        color: var(--accent-2);
+        font-style: normal;
+      }
+      .hero-desc {
+        font-size: 1.05rem;
+        line-height: 1.75;
+        color: rgba(247, 244, 239, 0.6);
+        max-width: 540px;
+        margin-bottom: 3rem;
+        font-weight: 300;
+      }
+      .hero-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 1rem;
+        background: var(--accent);
+        color: white;
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 1rem 2rem;
+        border-radius: 6px;
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s;
+      }
+      .hero-cta:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(198, 75, 49, 0.4);
+      }
+      .hero-cta svg {
+        transition: transform 0.2s;
+      }
+      .hero-cta:hover svg {
+        transform: translateX(4px);
+      }
+      .hero-stats {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: var(--card-r);
+        overflow: hidden;
+        align-self: stretch;
+        max-height: 380px;
+      }
+      .hero-stat {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 2rem 1.5rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        border: none;
+        text-align: left;
+        transition: background 0.2s;
+      }
+      .hero-stat:hover {
+        background: rgba(255, 255, 255, 0.07);
+      }
+      .hero-stat-value {
+        font-family: var(--mono);
+        font-size: 1.6rem;
+        font-weight: 500;
+        margin-bottom: 0.4rem;
+      }
+      .hero-stat-label {
+        font-size: 0.8rem;
+        color: rgba(247, 244, 239, 0.45);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .res-color {
+        color: var(--res);
+      }
+      .condo-color {
+        color: var(--condo);
+      }
+      .comm-color {
+        color: var(--comm);
+      }
+      .vac-color {
+        color: var(--vacant);
+      }
+      .landing-features {
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 3rem;
+        display: flex;
+        gap: 3rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+      }
+      .feature {
+        flex: 1;
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      .feature-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: rgba(200, 75, 49, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent-2);
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+      .feature-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--paper);
+        margin-bottom: 0.3rem;
+      }
+      .feature-desc {
+        font-size: 0.8rem;
+        color: rgba(247, 244, 239, 0.4);
+        line-height: 1.6;
+      }
 
-#app { display: none; flex-direction: column; height: 100vh; overflow: hidden; }
+      #app {
+        display: none;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
 
-.app-nav {
-  height: 64px; flex-shrink: 0;
-  background: var(--ink); color: var(--paper);
-  display: flex; align-items: center; padding: 0 1.5rem;
-  gap: 1rem; border-bottom: 1px solid rgba(255,255,255,.08);
-  z-index: 10;
-}
-.nav-brand { font-family: var(--serif); font-size: 1.2rem; letter-spacing: .02em; white-space: nowrap; }
-.nav-sep   { width: 1px; height: 26px; background: rgba(255,255,255,.12); flex-shrink: 0; }
-.nav-tabs  { display: flex; gap: .35rem; }
-.nav-tab {
-  font-size: 1rem; font-weight: 500; padding: .55rem 1.25rem; border-radius: 6px;
-  color: rgba(247,244,239,.6); transition: all .15s;
-}
-.nav-tab:hover { background: rgba(255,255,255,.08); color: var(--paper); }
-.nav-tab.active { background: rgba(255,255,255,.1); color: var(--paper); font-weight: 600; }
-.nav-badge {
-  font-family: var(--mono); font-size: .7rem; color: var(--accent-2);
-  letter-spacing: .1em; text-transform: uppercase;
-  border: 1px solid rgba(200,75,49,.25); border-radius: 16px; padding: .2rem .6rem;
-  margin-left: auto;
-}
+      .app-nav {
+        height: 64px;
+        flex-shrink: 0;
+        background: var(--ink);
+        color: var(--paper);
+        display: flex;
+        align-items: center;
+        padding: 0 1.5rem;
+        gap: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        z-index: 10;
+      }
+      .nav-brand {
+        font-family: var(--serif);
+        font-size: 1.2rem;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+      .nav-sep {
+        width: 1px;
+        height: 26px;
+        background: rgba(255, 255, 255, 0.12);
+        flex-shrink: 0;
+      }
+      .nav-tabs {
+        display: flex;
+        gap: 0.35rem;
+      }
+      .nav-tab {
+        font-size: 1rem;
+        font-weight: 500;
+        padding: 0.55rem 1.25rem;
+        border-radius: 6px;
+        color: rgba(247, 244, 239, 0.6);
+        transition: all 0.15s;
+      }
+      .nav-tab:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--paper);
+      }
+      .nav-tab.active {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--paper);
+        font-weight: 600;
+      }
+      .nav-badge {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--accent-2);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid rgba(200, 75, 49, 0.25);
+        border-radius: 16px;
+        padding: 0.2rem 0.6rem;
+        margin-left: auto;
+      }
 
-.search-container { position: relative; flex: 0 0 auto; width: 280px; }
-.search-input {
-  width: 100%; padding: .5rem .75rem;
-  border: 1px solid rgba(255,255,255,.15);
-  background: rgba(255,255,255,.08); color: var(--paper);
-  border-radius: 6px; font-size: .8rem; font-family: var(--sans); transition: all .2s;
-}
-.search-input::placeholder { color: rgba(247,244,239,.4); }
-.search-input:focus { outline: none; background: rgba(255,255,255,.12); border-color: var(--accent-2); }
-.search-results {
-  position: absolute; top: calc(100% + 8px); left: 0; right: 0;
-  max-height: 400px; overflow-y: auto;
-  background: var(--paper); border: 1px solid var(--paper-3);
-  border-radius: 6px; box-shadow: var(--shadow-lg); display: none; z-index: 1000;
-}
-.search-results.show { display: block; }
-.search-result-item { padding: .75rem 1rem; border-bottom: 1px solid var(--paper-2); cursor: pointer; transition: background .15s; }
-.search-result-item:last-child { border-bottom: none; }
-.search-result-item:hover { background: var(--paper-2); }
-.search-result-address { font-size: .85rem; font-weight: 600; color: var(--ink); margin-bottom: .25rem; }
-.search-result-details { font-size: .7rem; color: var(--ink-3); display: flex; gap: .75rem; flex-wrap: wrap; }
-.search-result-badge { display: inline-block; padding: .15rem .4rem; background: var(--paper-2); border-radius: 3px; font-family: var(--mono); font-size: .65rem; }
-.search-no-results { padding: 1.5rem; text-align: center; color: var(--ink-3); font-size: .8rem; }
+      .search-container {
+        position: relative;
+        flex: 0 0 auto;
+        width: 280px;
+      }
+      .search-input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--paper);
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-family: var(--sans);
+        transition: all 0.2s;
+      }
+      .search-input::placeholder {
+        color: rgba(247, 244, 239, 0.4);
+      }
+      .search-input:focus {
+        outline: none;
+        background: rgba(255, 255, 255, 0.12);
+        border-color: var(--accent-2);
+      }
+      .search-results {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        max-height: 400px;
+        overflow-y: auto;
+        background: var(--paper);
+        border: 1px solid var(--paper-3);
+        border-radius: 6px;
+        box-shadow: var(--shadow-lg);
+        display: none;
+        z-index: 1000;
+      }
+      .search-results.show {
+        display: block;
+      }
+      .search-result-item {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--paper-2);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .search-result-item:last-child {
+        border-bottom: none;
+      }
+      .search-result-item:hover {
+        background: var(--paper-2);
+      }
+      .search-result-address {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 0.25rem;
+      }
+      .search-result-details {
+        font-size: 0.7rem;
+        color: var(--ink-3);
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .search-result-badge {
+        display: inline-block;
+        padding: 0.15rem 0.4rem;
+        background: var(--paper-2);
+        border-radius: 3px;
+        font-family: var(--mono);
+        font-size: 0.65rem;
+      }
+      .search-no-results {
+        padding: 1.5rem;
+        text-align: center;
+        color: var(--ink-3);
+        font-size: 0.8rem;
+      }
 
-.dashboard {
-  display: none; flex: 1; overflow: hidden;
-  grid-template-columns: var(--left-width, 400px) 1fr var(--right-width, 380px);
-  grid-template-rows: 1fr;
-}
-.dashboard.active { display: grid; }
-.dash-left, .dash-right {
-  display: flex; flex-direction: column; gap: .75rem;
-  padding: .75rem; overflow-y: auto;
-  background: var(--paper-2); position: relative;
-  transition: margin-left .3s, margin-right .3s, opacity .3s;
-  min-width: 200px; max-width: 600px;
-}
-.dash-center { display: flex; flex-direction: column; background: var(--paper); }
+      .dashboard {
+        display: none;
+        flex: 1;
+        overflow: hidden;
+        grid-template-columns: var(--left-width, 400px) 1fr var(
+            --right-width,
+            380px
+          );
+        grid-template-rows: 1fr;
+      }
+      .dashboard.active {
+        display: grid;
+      }
+      .dash-left,
+      .dash-right {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        overflow-y: auto;
+        background: var(--paper-2);
+        position: relative;
+        transition:
+          margin-left 0.3s,
+          margin-right 0.3s,
+          opacity 0.3s;
+        min-width: 200px;
+        max-width: 600px;
+      }
+      .dash-center {
+        display: flex;
+        flex-direction: column;
+        background: var(--paper);
+      }
 
-.resize-handle { position: absolute; top: 0; bottom: 0; width: 16px; cursor: ew-resize; z-index: 10; }
-.resize-handle::before {
-  content: ''; position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%); width: 2px; height: 40px;
-  background: var(--ink-3); border-radius: 2px; opacity: 0; transition: opacity .2s;
-}
-.resize-handle:hover::before { opacity: 0.4; }
-.resize-handle.resizing::before { opacity: 0.6; }
-.dash-left .resize-handle { right: 0; }
-.dash-right .resize-handle { left: 0; }
+      .resize-handle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 16px;
+        cursor: ew-resize;
+        z-index: 10;
+      }
+      .resize-handle::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 40px;
+        background: var(--ink-3);
+        border-radius: 2px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .resize-handle:hover::before {
+        opacity: 0.4;
+      }
+      .resize-handle.resizing::before {
+        opacity: 0.6;
+      }
+      .dash-left .resize-handle {
+        right: 0;
+      }
+      .dash-right .resize-handle {
+        left: 0;
+      }
 
-.sidebar-toggle {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  background: var(--paper); color: var(--ink);
-  font-size: 1.2rem; font-weight: 600;
-  padding: .5rem .25rem; border-radius: 4px;
-  box-shadow: var(--shadow); z-index: 5; transition: background .2s;
-}
-.sidebar-toggle:hover { background: var(--paper-3); }
-.dash-left .sidebar-toggle { right: -10px; }
-.dash-right .sidebar-toggle { left: -10px; }
+      .sidebar-toggle {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--paper);
+        color: var(--ink);
+        font-size: 1.2rem;
+        font-weight: 600;
+        padding: 0.5rem 0.25rem;
+        border-radius: 4px;
+        box-shadow: var(--shadow);
+        z-index: 5;
+        transition: background 0.2s;
+      }
+      .sidebar-toggle:hover {
+        background: var(--paper-3);
+      }
+      .dash-left .sidebar-toggle {
+        right: -10px;
+      }
+      .dash-right .sidebar-toggle {
+        left: -10px;
+      }
 
-.stats-strip { display: flex; gap: 1px; background: var(--paper-3); border-bottom: 1px solid var(--paper-3); }
-.stat-card { flex: 1; padding: 1rem 1.25rem; background: var(--paper); display: flex; flex-direction: column; }
-.stat-lbl { font-size: .7rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .3rem; font-weight: 500; }
-.stat-val { font-family: var(--mono); font-size: 1.3rem; font-weight: 600; color: var(--ink); margin-bottom: .2rem; }
-.stat-delta { font-size: .75rem; font-weight: 600; font-family: var(--mono); }
-.stat-delta.up { color: #059669; }
-.stat-delta.down { color: #dc2626; }
+      .stats-strip {
+        display: flex;
+        gap: 1px;
+        background: var(--paper-3);
+        border-bottom: 1px solid var(--paper-3);
+      }
+      .stat-card {
+        flex: 1;
+        padding: 1rem 1.25rem;
+        background: var(--paper);
+        display: flex;
+        flex-direction: column;
+      }
+      .stat-lbl {
+        font-size: 0.7rem;
+        color: var(--ink-3);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.3rem;
+        font-weight: 500;
+      }
+      .stat-val {
+        font-family: var(--mono);
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 0.2rem;
+      }
+      .stat-delta {
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-family: var(--mono);
+      }
+      .stat-delta.up {
+        color: #059669;
+      }
+      .stat-delta.down {
+        color: #dc2626;
+      }
 
-.map-wrap { flex: 1; position: relative; overflow: hidden; }
-.map-container { position: absolute; inset: 0; }
-.map-toolbar {
-  position: absolute; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: .75rem;
-  background: rgba(255,255,255,.95); backdrop-filter: blur(10px);
-  padding: .5rem 1rem; border-radius: 6px; box-shadow: var(--shadow-lg);
-}
-.map-badge { font-family: var(--mono); font-size: .7rem; color: var(--ink-2); letter-spacing: .08em; text-transform: uppercase; font-weight: 500; }
-.filter-toggle-btn { font-size: .75rem; padding: .35rem .75rem; background: var(--paper-2); color: var(--ink); border-radius: 4px; font-weight: 500; transition: all .15s; }
-.filter-toggle-btn:hover { background: var(--paper-3); }
-.filter-toggle-btn.active { background: var(--accent); color: white; }
+      .map-wrap {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      .map-container {
+        position: absolute;
+        inset: 0;
+      }
+      .map-toolbar {
+        position: absolute;
+        bottom: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        box-shadow: var(--shadow-lg);
+      }
+      .map-badge {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--ink-2);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 500;
+      }
+      .filter-toggle-btn {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.75rem;
+        background: var(--paper-2);
+        color: var(--ink);
+        border-radius: 4px;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      .filter-toggle-btn:hover {
+        background: var(--paper-3);
+      }
+      .filter-toggle-btn.active {
+        background: var(--accent);
+        color: white;
+      }
 
-.panel-section { background: white; border-radius: var(--card-r); padding: .75rem; box-shadow: var(--shadow); display: flex; flex-direction: column; flex-shrink: 0; }
-.panel-heading { font-size: .75rem; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .6rem; flex-shrink: 0; }
-.sym-select { width: 100%; padding: .5rem; border-radius: 6px; border: 1px solid var(--paper-3); font-size: .8rem; font-family: var(--sans); background: var(--paper); color: var(--ink); cursor: pointer; }
-.chart-field-select {
-  width: 100%; padding: .4rem .5rem; border-radius: 5px;
-  border: 1px solid var(--paper-3); font-size: .75rem; font-family: var(--sans);
-  background: var(--paper-2); color: var(--ink); cursor: pointer; margin-bottom: .5rem; flex-shrink: 0;
-}
-.chart-field-select:focus { outline: none; border-color: var(--accent-2); }
+      .panel-section {
+        background: white;
+        border-radius: var(--card-r);
+        padding: 0.75rem;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+      }
+      .panel-heading {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--ink-2);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.6rem;
+        flex-shrink: 0;
+      }
+      .sym-select {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid var(--paper-3);
+        font-size: 0.8rem;
+        font-family: var(--sans);
+        background: var(--paper);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .chart-field-select {
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        border-radius: 5px;
+        border: 1px solid var(--paper-3);
+        font-size: 0.75rem;
+        font-family: var(--sans);
+        background: var(--paper-2);
+        color: var(--ink);
+        cursor: pointer;
+        margin-bottom: 0.5rem;
+        flex-shrink: 0;
+      }
+      .chart-field-select:focus {
+        outline: none;
+        border-color: var(--accent-2);
+      }
 
-.legend-list { display: flex; flex-direction: column; gap: .35rem; max-height: 280px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ink-3) transparent; }
-.legend-item { display: flex; align-items: center; gap: .5rem; font-size: .7rem; color: var(--ink-2); }
-.legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(0,0,0,.1); }
-.legend-ramp { display: flex; height: 20px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0,0,0,.1); }
-.legend-ramp-seg { flex: 1; }
-.legend-scale { display: flex; justify-content: space-between; font-size: .65rem; color: var(--ink-3); margin-top: .25rem; }
+      .legend-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        max-height: 280px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--ink-3) transparent;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.7rem;
+        color: var(--ink-2);
+      }
+      .legend-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        flex-shrink: 0;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+      .legend-ramp {
+        display: flex;
+        height: 20px;
+        border-radius: 4px;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+      .legend-ramp-seg {
+        flex: 1;
+      }
+      .legend-scale {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.65rem;
+        color: var(--ink-3);
+        margin-top: 0.25rem;
+      }
 
-.chart-wrap { position: relative; height: 200px; margin-top: .5rem; overflow-y: auto; flex: 1; max-height: 380px; }
-.chart-wrap.tall { height: 280px; overflow-y: auto; }
-/* Beeswarm gets more height since it shows all individual parcels */
-.chart-wrap.beeswarm { height: 340px; overflow: hidden; flex: 1; max-height: 380px; }
-.chart-wrap.beeswarm .d3-chart { width: 100%; height: 100%; }
+      .chart-wrap {
+        position: relative;
+        height: 200px;
+        margin-top: 0.5rem;
+        overflow-y: auto;
+        flex: 1;
+        max-height: 380px;
+      }
+      .chart-wrap.tall {
+        height: 280px;
+        overflow-y: auto;
+      }
+      /* Beeswarm gets more height since it shows all individual parcels */
+      .chart-wrap.beeswarm {
+        height: 340px;
+        overflow: hidden;
+        flex: 1;
+        max-height: 380px;
+      }
+      .chart-wrap.beeswarm .d3-chart {
+        width: 100%;
+        height: 100%;
+      }
 
-.scatter-controls { display: flex; gap: .35rem; margin-bottom: .5rem; flex-shrink: 0; }
-.scatter-btn { flex: 1; padding: .4rem; font-size: .7rem; background: var(--paper-2); color: var(--ink-2); border-radius: 4px; font-weight: 500; transition: all .15s; }
-.scatter-btn:hover { background: var(--paper-3); }
-.scatter-btn.active { background: var(--accent); color: white; }
-.scatter-wrap { position: relative; background: white; border-radius: 8px; border: 1px solid var(--paper-3); flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 200px; flex: 1; max-height: 420px; }
-.expand-btn { margin-left: auto; font-size: .7rem; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--paper-3); background: transparent; color: var(--ink-3); cursor: pointer; white-space: nowrap; transition: all .15s; }
-.expand-btn:hover { background: var(--paper-2); color: var(--ink); }
-.scatter-wrap .d3-chart { flex: 1; min-height: 200px; }
+      .scatter-controls {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.5rem;
+        flex-shrink: 0;
+      }
+      .scatter-btn {
+        flex: 1;
+        padding: 0.4rem;
+        font-size: 0.7rem;
+        background: var(--paper-2);
+        color: var(--ink-2);
+        border-radius: 4px;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      .scatter-btn:hover {
+        background: var(--paper-3);
+      }
+      .scatter-btn.active {
+        background: var(--accent);
+        color: white;
+      }
+      .scatter-wrap {
+        position: relative;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid var(--paper-3);
+        flex-shrink: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 200px;
+        flex: 1;
+        max-height: 420px;
+      }
+      .expand-btn {
+        margin-left: auto;
+        font-size: 0.7rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        border: 1px solid var(--paper-3);
+        background: transparent;
+        color: var(--ink-3);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s;
+      }
+      .expand-btn:hover {
+        background: var(--paper-2);
+        color: var(--ink);
+      }
+      .scatter-wrap .d3-chart {
+        flex: 1;
+        min-height: 200px;
+      }
 
-.d3-chart svg { width: 100%; height: 100%; font-family: var(--sans); }
-.d3-chart .axis text { fill: var(--ink-3); font-size: 10px; white-space: nowrap; }
-.d3-chart .axis line, .d3-chart .axis path { stroke: var(--paper-3); }
-.d3-chart .grid line { stroke: var(--paper-3); stroke-opacity: 0.3; }
-.d3-chart .bar { transition: opacity .2s; cursor: pointer; }
-.d3-chart .bar:hover { opacity: 0.8; }
-.d3-chart .dot { transition: r .2s, opacity .2s; cursor: pointer; }
-.d3-chart .dot:hover { r: 6; stroke-width: 2; }
+      .d3-chart svg {
+        width: 100%;
+        height: 100%;
+        font-family: var(--sans);
+      }
+      .d3-chart .axis text {
+        fill: var(--ink-3);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .d3-chart .axis line,
+      .d3-chart .axis path {
+        stroke: var(--paper-3);
+      }
+      .d3-chart .grid line {
+        stroke: var(--paper-3);
+        stroke-opacity: 0.3;
+      }
+      .d3-chart .bar {
+        transition: opacity 0.2s;
+        cursor: pointer;
+      }
+      .d3-chart .bar:hover {
+        opacity: 0.8;
+      }
+      .d3-chart .dot {
+        transition:
+          r 0.2s,
+          opacity 0.2s;
+        cursor: pointer;
+      }
+      .d3-chart .dot:hover {
+        r: 6;
+        stroke-width: 2;
+      }
 
-.map-hover-popup .maplibregl-popup-content {
-  padding: .5rem .75rem; border-radius: 6px; font-size: .75rem; line-height: 1.4;
-  background: rgba(26,26,46,0.92); color: #f7f4ef; pointer-events: none; max-width: 220px;
-}
-.map-popup strong { display: block; font-size: .8rem; margin-bottom: .15rem; }
-.map-popup span { color: rgba(247,244,239,.65); font-size: .7rem; }
-.map-popup .popup-val { color: var(--accent-2); font-weight: 600; font-size: .78rem; }
-.map-hover-popup .maplibregl-popup-tip { border-top-color: rgba(26,26,46,0.92); }
+      .map-hover-popup .maplibregl-popup-content {
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        background: rgba(26, 26, 46, 0.92);
+        color: #f7f4ef;
+        pointer-events: none;
+        max-width: 220px;
+      }
+      .map-popup strong {
+        display: block;
+        font-size: 0.8rem;
+        margin-bottom: 0.15rem;
+      }
+      .map-popup span {
+        color: rgba(247, 244, 239, 0.65);
+        font-size: 0.7rem;
+      }
+      .map-popup .popup-val {
+        color: var(--accent-2);
+        font-weight: 600;
+        font-size: 0.78rem;
+      }
+      .map-hover-popup .maplibregl-popup-tip {
+        border-top-color: rgba(26, 26, 46, 0.92);
+      }
 
-.filter-chip {
-  display: none; align-items: center; gap: .5rem;
-  background: rgba(238,119,51,.12); border: 1px solid rgba(238,119,51,.35);
-  border-radius: 20px; padding: .25rem .75rem;
-  font-size: .72rem; color: var(--ink-2); flex-shrink: 0;
-}
-.filter-chip strong { color: var(--accent); }
-.filter-chip-clear {
-  background: none; border: none; cursor: pointer; color: var(--ink-3);
-  font-size: .9rem; line-height: 1; padding: 0 0 0 .25rem;
-}
-.filter-chip-clear:hover { color: var(--accent); }
+      .filter-chip {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(238, 119, 51, 0.12);
+        border: 1px solid rgba(238, 119, 51, 0.35);
+        border-radius: 20px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.72rem;
+        color: var(--ink-2);
+        flex-shrink: 0;
+      }
+      .filter-chip strong {
+        color: var(--accent);
+      }
+      .filter-chip-clear {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--ink-3);
+        font-size: 0.9rem;
+        line-height: 1;
+        padding: 0 0 0 0.25rem;
+      }
+      .filter-chip-clear:hover {
+        color: var(--accent);
+      }
 
-.scatter-color-legend {
-  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem;
-  padding: .35rem .5rem; font-size: .68rem; color: var(--ink-3);
-  border-top: 1px solid var(--paper-3); background: var(--paper);
-  line-height: 1.4; flex-shrink: 0;
-}
-.sc-leg-title { font-weight: 600; color: var(--ink-2); margin-right: .25rem; white-space: nowrap; }
-.sc-leg-item { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-.sc-leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,.1); }
-.sc-leg-more { color: var(--ink-3); font-style: italic; }
+      .scatter-color-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.3rem 0.5rem;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.68rem;
+        color: var(--ink-3);
+        border-top: 1px solid var(--paper-3);
+        background: var(--paper);
+        line-height: 1.4;
+        flex-shrink: 0;
+      }
+      .sc-leg-title {
+        font-weight: 600;
+        color: var(--ink-2);
+        margin-right: 0.25rem;
+        white-space: nowrap;
+      }
+      .sc-leg-item {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      .sc-leg-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+      .sc-leg-more {
+        color: var(--ink-3);
+        font-style: italic;
+      }
 
-.scatter-reset-btn {
-  position: absolute; top: 6px; right: 6px;
-  font-size: .68rem; padding: .25rem .5rem;
-  background: var(--paper-2); border: 1px solid var(--paper-3);
-  border-radius: 4px; color: var(--ink-3); cursor: pointer;
-  font-family: var(--sans); font-weight: 500; z-index: 2;
-}
-.scatter-reset-btn:hover { background: var(--paper-3); color: var(--ink); }
+      .scatter-reset-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        font-size: 0.68rem;
+        padding: 0.25rem 0.5rem;
+        background: var(--paper-2);
+        border: 1px solid var(--paper-3);
+        border-radius: 4px;
+        color: var(--ink-3);
+        cursor: pointer;
+        font-family: var(--sans);
+        font-weight: 500;
+        z-index: 2;
+      }
+      .scatter-reset-btn:hover {
+        background: var(--paper-3);
+        color: var(--ink);
+      }
 
-@keyframes detail-flash { 0%,100%{background:white} 40%{background:rgba(238,119,51,.12)} }
-.detail-flash { animation: detail-flash .6s ease; }
+      @keyframes detail-flash {
+        0%,
+        100% {
+          background: white;
+        }
+        40% {
+          background: rgba(238, 119, 51, 0.12);
+        }
+      }
+      .detail-flash {
+        animation: detail-flash 0.6s ease;
+      }
 
-.field-tip { font-size: .65rem; color: var(--ink-3); cursor: help; }
-.prop-row-label[title] { cursor: help; }
+      .field-tip {
+        font-size: 0.65rem;
+        color: var(--ink-3);
+        cursor: help;
+      }
+      .prop-row-label[title] {
+        cursor: help;
+      }
 
-.search-result-item.kb-focus { background: var(--paper-2); }
+      .search-result-item.kb-focus {
+        background: var(--paper-2);
+      }
 
-.nav-tab .tab-dot {
-  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
-  background: rgba(247,244,239,.25); margin-left: 4px; vertical-align: middle;
-  transition: background .3s;
-}
-.nav-tab.data-ready .tab-dot { background: var(--accent-2); }
+      .nav-tab .tab-dot {
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: rgba(247, 244, 239, 0.25);
+        margin-left: 4px;
+        vertical-align: middle;
+        transition: background 0.3s;
+      }
+      .nav-tab.data-ready .tab-dot {
+        background: var(--accent-2);
+      }
 
-.legend-more { font-size: .68rem; padding-top: .25rem; }
+      .legend-more {
+        font-size: 0.68rem;
+        padding-top: 0.25rem;
+      }
 
-.d3-tooltip {
-  position: absolute; background: rgba(26,26,46,0.95); color: #f7f4ef;
-  padding: 0.75rem; border-radius: 6px; pointer-events: none; opacity: 0;
-  transition: opacity .2s; font-size: 0.75rem; line-height: 1.4; z-index: 1000; max-width: 250px;
-}
-.d3-tooltip.show { opacity: 1; }
+      .d3-tooltip {
+        position: absolute;
+        background: rgba(26, 26, 46, 0.95);
+        color: #f7f4ef;
+        padding: 0.75rem;
+        border-radius: 6px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        z-index: 1000;
+        max-width: 250px;
+      }
+      .d3-tooltip.show {
+        opacity: 1;
+      }
 
-.prop-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; color: var(--ink-3); }
-.ph-icon { font-size: 2rem; margin-bottom: .5rem; opacity: .3; }
-.prop-detail { display: flex; flex-direction: column; gap: .4rem; }
-.prop-addr { font-weight: 600; font-size: .85rem; color: var(--ink); margin-bottom: .4rem; line-height: 1.3; }
-.prop-change { font-family: var(--mono); font-size: .75rem; font-weight: 600; padding: .2rem .5rem; border-radius: 4px; display: inline-block; }
-.prop-change.up { background: #d1fae5; color: #065f46; }
-.prop-change.down { background: #fee2e2; color: #991b1b; }
-.prop-row { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; border-bottom: 1px solid var(--paper-2); }
-.prop-row:last-child { border-bottom: none; }
-.prop-row-label { font-size: .7rem; color: var(--ink-3); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
-.prop-row-value { font-size: .75rem; color: var(--ink); font-weight: 500; text-align: right; }
+      .prop-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        text-align: center;
+        color: var(--ink-3);
+      }
+      .ph-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.3;
+      }
+      .prop-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .prop-addr {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--ink);
+        margin-bottom: 0.4rem;
+        line-height: 1.3;
+      }
+      .prop-change {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        display: inline-block;
+      }
+      .prop-change.up {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      .prop-change.down {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .prop-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid var(--paper-2);
+      }
+      .prop-row:last-child {
+        border-bottom: none;
+      }
+      .prop-row-label {
+        font-size: 0.7rem;
+        color: var(--ink-3);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .prop-row-value {
+        font-size: 0.75rem;
+        color: var(--ink);
+        font-weight: 500;
+        text-align: right;
+      }
 
-/* Beeswarm category label strip */
-.beeswarm-category-label {
-  font-size: 9px;
-  fill: var(--ink-3);
-  text-anchor: middle;
-}
+      /* Beeswarm category label strip */
+      .beeswarm-category-label {
+        font-size: 9px;
+        fill: var(--ink-3);
+        text-anchor: middle;
+      }
 
-@media (max-width: 1400px) {
-  .landing-hero { flex-direction: column; padding: 3rem 2rem; gap: 3rem; }
-  .hero-text { flex: none; max-width: 100%; }
-  .hero-stats { max-height: none; }
-}
-@media (max-width: 900px) {
-  .landing-features { flex-direction: column; gap: 2rem; }
-  .dashboard { grid-template-columns: 1fr !important; }
-  .dash-left, .dash-right { display: none; }
-}
-</style>
-</head>
-<body>
-
-<div id="loading-overlay">
-  <div class="loader-logo">Property Assessment Value</div>
-  <div class="loader-sub" id="loading-message">Initializing…</div>
-  <div class="loader-bar"><div class="loader-fill"></div></div>
-</div>
-
-<div id="landing" style="display:none">
-  <nav class="landing-nav">
-    <div class="landing-brand">Property Assessment Value</div>
-    <div class="landing-badge">Beta</div>
-  </nav>
-  <div class="landing-hero">
-    <div class="hero-text">
-      <div class="hero-eyebrow">Property Assessment Value Platform</div>
-      <h1 class="hero-title">Explore current and prior year property assessments</h1>
-      <p class="hero-desc">City of West Hartford</p>
-      <button class="hero-cta" id="enter-btn">
-        Enter Dashboard
-        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M5 12h14m-7-7l7 7-7 7"/>
-        </svg>
-      </button>
+      @media (max-width: 1400px) {
+        .landing-hero {
+          flex-direction: column;
+          padding: 3rem 2rem;
+          gap: 3rem;
+        }
+        .hero-text {
+          flex: none;
+          max-width: 100%;
+        }
+        .hero-stats {
+          max-height: none;
+        }
+      }
+      @media (max-width: 900px) {
+        .landing-features {
+          flex-direction: column;
+          gap: 2rem;
+        }
+        .dashboard {
+          grid-template-columns: 1fr !important;
+        }
+        .dash-left,
+        .dash-right {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading-overlay">
+      <div class="loader-logo">Property Assessment Value</div>
+      <div class="loader-sub" id="loading-message">Initializing…</div>
+      <div class="loader-bar"><div class="loader-fill"></div></div>
     </div>
-    <div class="hero-stats">
-      <div class="hero-stat"><div class="hero-stat-value res-color" id="ls-res-total">—</div><div class="hero-stat-label">Residential Value</div></div>
-      <div class="hero-stat"><div class="hero-stat-value condo-color" id="ls-condo-total">—</div><div class="hero-stat-label">Condo Value</div></div>
-      <div class="hero-stat"><div class="hero-stat-value comm-color" id="ls-comm-total">—</div><div class="hero-stat-label">Commercial Value</div></div>
-      <div class="hero-stat"><div class="hero-stat-value vac-color" id="ls-vac-total">—</div><div class="hero-stat-label">Vacant Land Value</div></div>
-    </div>
-  </div>
-  <div class="landing-features">
-    <div class="feature">
-      <div class="feature-icon">🗺️</div>
-      <div><div class="feature-title">Your Property Assessment Value</div><div class="feature-desc">Understand what characteristics affect your property's value</div></div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">📊</div>
-      <div><div class="feature-title">Interactive Charts</div><div class="feature-desc">View neighborhoods, property styles, and property use</div></div>
-    </div>
-  </div>
-</div>
 
-<div id="app">
-  <nav class="app-nav">
-    <div class="nav-brand">Property Assessment Value</div>
-    <div class="nav-sep"></div>
-    <div class="nav-tabs">
-      <button class="nav-tab active" data-tab="residential">Residential<span class="tab-dot"></span></button>
-      <button class="nav-tab" data-tab="condo">Condo<span class="tab-dot"></span></button>
-      <button class="nav-tab" data-tab="commercial">Commercial<span class="tab-dot"></span></button>
-      <button class="nav-tab" data-tab="vacant">Vacant Land<span class="tab-dot"></span></button>
-    </div>
-    <div class="search-container">
-      <input type="text" id="parcel-search" class="search-input" placeholder="Search address or parcel ID...">
-      <div id="search-results" class="search-results"></div>
-    </div>
-    <div class="nav-badge" id="ls-total-parcels">—</div>
-  </nav>
-
-  <!-- RESIDENTIAL TAB -->
-  <div id="dash-residential" class="dashboard active">
-    <div class="dash-left">
-      <button class="sidebar-toggle" onclick="toggleSidebar('residential','left')" aria-label="Collapse left panel">‹</button>
-      <div class="resize-handle" data-dashboard="residential" data-side="left"></div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment vs. Size<span id="res-scatter-count"></span><button class="expand-btn" onclick="openFullChart('residential','scatter')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('residential','sqft','assessed2022',this)">2022 Assess vs Living Area</button>
-          <button class="scatter-btn" onclick="setScatterAxes('residential','yearBuilt','assessed2022',this)">2022 Assess. vs Year Built</button>
-          <button class="scatter-btn" onclick="setScatterAxes('residential','acreage','assessed2022',this)">2022 Assess vs Acres</button>
+    <div id="landing" style="display: none">
+      <nav class="landing-nav">
+        <div class="landing-brand">Property Assessment Value</div>
+        <div class="landing-badge">Beta</div>
+      </nav>
+      <div class="landing-hero">
+        <div class="hero-text">
+          <div class="hero-eyebrow">Property Assessment Value Platform</div>
+          <h1 class="hero-title">
+            Explore current and prior year property assessments
+          </h1>
+          <p class="hero-desc">City of West Hartford</p>
+          <button class="hero-cta" id="enter-btn">
+            Enter Dashboard
+            <svg
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M5 12h14m-7-7l7 7-7 7" />
+            </svg>
+          </button>
         </div>
-        <div class="scatter-wrap">
-          <div id="resScatter" class="d3-chart"></div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hero-stat-value res-color" id="ls-res-total">—</div>
+            <div class="hero-stat-label">Residential Value</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-value condo-color" id="ls-condo-total">—</div>
+            <div class="hero-stat-label">Condo Value</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-value comm-color" id="ls-comm-total">—</div>
+            <div class="hero-stat-label">Commercial Value</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-value vac-color" id="ls-vac-total">—</div>
+            <div class="hero-stat-label">Vacant Land Value</div>
+          </div>
         </div>
       </div>
-      <!-- Beeswarm: Assessment distribution — toggleable between Style and Bedrooms -->
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment Distribution<span id="res-beeswarm-label" style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:.4rem;color:var(--ink-3)">by Style</span><button class="expand-btn" onclick="openFullChart('residential','beeswarm')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" id="res-bee-style-btn" onclick="switchResBeeswarm('style',this)">By Style</button>
-          <button class="scatter-btn" id="res-bee-bed-btn" onclick="switchResBeeswarm('bedrooms',this)">By Bedrooms</button>
+      <div class="landing-features">
+        <div class="feature">
+          <div class="feature-icon">🗺️</div>
+          <div>
+            <div class="feature-title">Your Property Assessment Value</div>
+            <div class="feature-desc">
+              Understand what characteristics affect your property's value
+            </div>
+          </div>
         </div>
-        <div class="chart-wrap beeswarm" id="res-beeswarm-wrap">
-          <div id="resBeeswarm" class="d3-chart"></div>
-          <div id="resBeeswarmBedroom" class="d3-chart" style="display:none"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-center">
-      <div class="stats-strip">
-        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="res-total25">—</div><div class="stat-delta" id="res-delta">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="res-total20">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="res-count">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Mean Value 2022</div><div class="stat-val" id="res-avg">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Median Value 2022</div><div class="stat-val" id="res-median">—</div></div>
-      </div>
-      <div class="map-wrap">
-        <div id="residentialMap" class="map-container"></div>
-        <div class="map-toolbar">
-          <div id="res-filter-chip" class="filter-chip"></div>
-          <div class="map-badge">Residential Parcels</div>
-          <button class="filter-toggle-btn" id="residential-filter-btn" onclick="toggleParcelFilter('residential')">Filter to Residential only</button>
+        <div class="feature">
+          <div class="feature-icon">📊</div>
+          <div>
+            <div class="feature-title">Interactive Charts</div>
+            <div class="feature-desc">
+              View neighborhoods, property styles, and property use
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="dash-right">
-      <div class="resize-handle" data-dashboard="residential" data-side="right"></div>
-      <button class="sidebar-toggle" onclick="toggleSidebar('residential','right')" aria-label="Collapse right panel">›</button>
-      <div class="panel-section">
-        <div class="panel-heading">Symbolize By</div>
-        <select class="sym-select" id="residential-sym" onchange="changeMapSymbolization(residentialMap,'residential',this.value)">
-          <option value="Zone">Zone</option>
-          <option value="Property Type">Property Type</option>
-          <option value="Assessed Total">2022 Assessment Value</option>
-          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
-          <option value="Pct Change 2020-2022">2020–2022 Change %</option>
-          <option value="Effective Year Built">Year Built</option>
-          <option value="Style Description">Architectural Style</option>
-          <option value="Neighborhood">Neighborhood</option>
-        </select>
-        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
-        <div id="res-legend" class="legend-list"></div>
-      </div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading" id="res-bar-heading">Mean 2022 Assessment</div>
-        <div style="font-size:.7rem;color:var(--ink-3);margin-bottom:.3rem">Group by</div>
-        <select class="chart-field-select" id="res-bar-field" onchange="updateRightBarChart('residential',this.value)">
-          <option value="style">Architectural Style</option>
-          <option value="neighborhood">Neighborhood</option>
-          <option value="zone">Zone</option>
-          <option value="stateUse">State Use</option>
-          <option value="frame">Frame Type</option>
-        </select>
-        <div class="chart-wrap tall">
-          <div id="resRightBarChart" class="d3-chart"></div>
+    <div id="app">
+      <nav class="app-nav">
+        <div class="nav-brand">Property Assessment Value</div>
+        <div class="nav-sep"></div>
+        <div class="nav-tabs">
+          <button class="nav-tab active" data-tab="residential">
+            Residential<span class="tab-dot"></span>
+          </button>
+          <button class="nav-tab" data-tab="condo">
+            Condo<span class="tab-dot"></span>
+          </button>
+          <button class="nav-tab" data-tab="commercial">
+            Commercial<span class="tab-dot"></span>
+          </button>
+          <button class="nav-tab" data-tab="vacant">
+            Vacant Land<span class="tab-dot"></span>
+          </button>
+        </div>
+        <div class="search-container">
+          <input
+            type="text"
+            id="parcel-search"
+            class="search-input"
+            placeholder="Search address or parcel ID..."
+          />
+          <div id="search-results" class="search-results"></div>
+        </div>
+        <div class="nav-badge" id="ls-total-parcels">—</div>
+      </nav>
+
+      <!-- RESIDENTIAL TAB -->
+      <div id="dash-residential" class="dashboard active">
+        <div class="dash-left">
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('residential', 'left')"
+            aria-label="Collapse left panel"
+          >
+            ‹
+          </button>
+          <div
+            class="resize-handle"
+            data-dashboard="residential"
+            data-side="left"
+          ></div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment vs. Size<span id="res-scatter-count"></span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('residential', 'scatter')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                onclick="
+                  setScatterAxes('residential', 'sqft', 'assessed2022', this)
+                "
+              >
+                2022 Assess vs Living Area
+              </button>
+              <button
+                class="scatter-btn"
+                onclick="
+                  setScatterAxes(
+                    'residential',
+                    'yearBuilt',
+                    'assessed2022',
+                    this,
+                  )
+                "
+              >
+                2022 Assess. vs Year Built
+              </button>
+              <button
+                class="scatter-btn"
+                onclick="
+                  setScatterAxes('residential', 'acreage', 'assessed2022', this)
+                "
+              >
+                2022 Assess vs Acres
+              </button>
+            </div>
+            <div class="scatter-wrap">
+              <div id="resScatter" class="d3-chart"></div>
+            </div>
+          </div>
+          <!-- Beeswarm: Assessment distribution — toggleable between Style and Bedrooms -->
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment Distribution<span
+                id="res-beeswarm-label"
+                style="
+                  font-weight: 400;
+                  text-transform: none;
+                  letter-spacing: 0;
+                  margin-left: 0.4rem;
+                  color: var(--ink-3);
+                "
+                >by Style</span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('residential', 'beeswarm')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                id="res-bee-style-btn"
+                onclick="switchResBeeswarm('style', this)"
+              >
+                By Style
+              </button>
+              <button
+                class="scatter-btn"
+                id="res-bee-bed-btn"
+                onclick="switchResBeeswarm('bedrooms', this)"
+              >
+                By Bedrooms
+              </button>
+            </div>
+            <div class="chart-wrap beeswarm" id="res-beeswarm-wrap">
+              <div id="resBeeswarm" class="d3-chart"></div>
+              <div
+                id="resBeeswarmBedroom"
+                class="d3-chart"
+                style="display: none"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-center">
+          <div class="stats-strip">
+            <div class="stat-card">
+              <div class="stat-lbl">2022 Assessed Total</div>
+              <div class="stat-val" id="res-total25">—</div>
+              <div class="stat-delta" id="res-delta">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">2020 Assessed Total</div>
+              <div class="stat-val" id="res-total20">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Parcels</div>
+              <div class="stat-val" id="res-count">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Mean Value 2022</div>
+              <div class="stat-val" id="res-avg">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Median Value 2022</div>
+              <div class="stat-val" id="res-median">—</div>
+            </div>
+          </div>
+          <div class="map-wrap">
+            <div id="residentialMap" class="map-container"></div>
+            <div class="map-toolbar">
+              <div id="res-filter-chip" class="filter-chip"></div>
+              <div class="map-badge">Residential Parcels</div>
+              <button
+                class="filter-toggle-btn"
+                id="residential-filter-btn"
+                onclick="toggleParcelFilter('residential')"
+              >
+                Filter to Residential only
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-right">
+          <div
+            class="resize-handle"
+            data-dashboard="residential"
+            data-side="right"
+          ></div>
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('residential', 'right')"
+            aria-label="Collapse right panel"
+          >
+            ›
+          </button>
+          <div class="panel-section">
+            <div class="panel-heading">Symbolize By</div>
+            <select
+              class="sym-select"
+              id="residential-sym"
+              onchange="
+                changeMapSymbolization(
+                  residentialMap,
+                  'residential',
+                  this.value,
+                )
+              "
+            >
+              <option value="Zone">Zone</option>
+              <option value="Property Type">Property Type</option>
+              <option value="Assessed Total">2022 Assessment Value</option>
+              <option value="Pre Year Assessed Total">
+                2020 Assessment Value
+              </option>
+              <option value="Pct Change 2020-2022">2020–2022 Change %</option>
+              <option value="Effective Year Built">Year Built</option>
+              <option value="Style Description">Architectural Style</option>
+              <option value="Neighborhood">Neighborhood</option>
+            </select>
+            <div class="panel-heading" style="margin-top: 0.5rem">Legend</div>
+            <div id="res-legend" class="legend-list"></div>
+          </div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading" id="res-bar-heading">
+              Mean 2022 Assessment
+            </div>
+            <div
+              style="
+                font-size: 0.7rem;
+                color: var(--ink-3);
+                margin-bottom: 0.3rem;
+              "
+            >
+              Group by
+            </div>
+            <select
+              class="chart-field-select"
+              id="res-bar-field"
+              onchange="updateRightBarChart('residential', this.value)"
+            >
+              <option value="style">Architectural Style</option>
+              <option value="neighborhood">Neighborhood</option>
+              <option value="zone">Zone</option>
+              <option value="stateUse">State Use</option>
+              <option value="frame">Frame Type</option>
+            </select>
+            <div class="chart-wrap tall">
+              <div id="resRightBarChart" class="d3-chart"></div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <div class="panel-heading">Selected Parcel</div>
+            <div id="res-detail">
+              <div class="prop-placeholder">
+                <div class="ph-icon">📍</div>
+                Click a parcel to inspect
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="panel-section">
-        <div class="panel-heading">Selected Parcel</div>
-        <div id="res-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
+
+      <!-- CONDO TAB -->
+      <div id="dash-condo" class="dashboard">
+        <div class="dash-left">
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('condo', 'left')"
+            aria-label="Collapse left panel"
+          >
+            ‹
+          </button>
+          <div
+            class="resize-handle"
+            data-dashboard="condo"
+            data-side="left"
+          ></div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment vs. Size<span id="condo-scatter-count"></span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('condo', 'scatter')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                onclick="setScatterAxes('condo', 'sqft', 'assessed2022', this)"
+              >
+                2022 Assess vs Value
+              </button>
+              <button
+                class="scatter-btn"
+                onclick="
+                  setScatterAxes('condo', 'yearBuilt', 'assessed2022', this)
+                "
+              >
+                2022 Assess vs Year Built
+              </button>
+            </div>
+            <div class="scatter-wrap">
+              <div id="condoScatter" class="d3-chart"></div>
+            </div>
+          </div>
+          <!-- Beeswarm: Assessment distribution — toggleable between Style and Bedrooms -->
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment Distribution<span
+                id="condo-beeswarm-label"
+                style="
+                  font-weight: 400;
+                  text-transform: none;
+                  letter-spacing: 0;
+                  margin-left: 0.4rem;
+                  color: var(--ink-3);
+                "
+                >by Style</span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('condo', 'beeswarm')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                id="condo-bee-style-btn"
+                onclick="switchCondoBeeswarm('style', this)"
+              >
+                By Style
+              </button>
+              <button
+                class="scatter-btn"
+                id="condo-bee-bed-btn"
+                onclick="switchCondoBeeswarm('bedrooms', this)"
+              >
+                By Bedrooms
+              </button>
+            </div>
+            <div class="chart-wrap beeswarm" id="condo-beeswarm-wrap">
+              <div id="condoBeeswarm" class="d3-chart"></div>
+              <div
+                id="condoBeeswarmBedroom"
+                class="d3-chart"
+                style="display: none"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-center">
+          <div class="stats-strip">
+            <div class="stat-card">
+              <div class="stat-lbl">2022 Assessed Total</div>
+              <div class="stat-val" id="condo-total25">—</div>
+              <div class="stat-delta" id="condo-delta">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">2020 Assessed Total</div>
+              <div class="stat-val" id="condo-total20">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Parcels</div>
+              <div class="stat-val" id="condo-count">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Mean Value 2022</div>
+              <div class="stat-val" id="condo-avg">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Median Value 2022</div>
+              <div class="stat-val" id="condo-median">—</div>
+            </div>
+          </div>
+          <div class="map-wrap">
+            <div id="condoMap" class="map-container"></div>
+            <div class="map-toolbar">
+              <div id="condo-filter-chip" class="filter-chip"></div>
+              <div class="map-badge">Condo Parcels</div>
+              <button
+                class="filter-toggle-btn"
+                id="condo-filter-btn"
+                onclick="toggleParcelFilter('condo')"
+              >
+                Filter to Condo only
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-right">
+          <div
+            class="resize-handle"
+            data-dashboard="condo"
+            data-side="right"
+          ></div>
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('condo', 'right')"
+            aria-label="Collapse right panel"
+          >
+            ›
+          </button>
+          <div class="panel-section">
+            <div class="panel-heading">Symbolize By</div>
+            <select
+              class="sym-select"
+              id="condo-sym"
+              onchange="changeMapSymbolization(condoMap, 'condo', this.value)"
+            >
+              <option value="Zone">Zone</option>
+              <option value="Property Type">Property Type</option>
+              <option value="Assessed Total">2022 Assessment Value</option>
+              <option value="Pre Year Assessed Total">
+                2020 Assessment Value
+              </option>
+              <option value="Pct Change 2020-2022">2020–2022 Change %</option>
+              <option value="Effective Year Built">Year Built</option>
+              <option value="Neighborhood">Neighborhood</option>
+            </select>
+            <div class="panel-heading" style="margin-top: 0.5rem">Legend</div>
+            <div id="condo-legend" class="legend-list"></div>
+          </div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading" id="condo-bar-heading">
+              Mean 2022 Assessment
+            </div>
+            <div
+              style="
+                font-size: 0.7rem;
+                color: var(--ink-3);
+                margin-bottom: 0.3rem;
+              "
+            >
+              Group by
+            </div>
+            <select
+              class="chart-field-select"
+              id="condo-bar-field"
+              onchange="updateRightBarChart('condo', this.value)"
+            >
+              <option value="stateUse">State Use</option>
+              <option value="style">Style Description</option>
+              <option value="zone">Zone</option>
+              <option value="frame">Frame Type</option>
+            </select>
+            <div class="chart-wrap tall">
+              <div id="condoRightBarChart" class="d3-chart"></div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <div class="panel-heading">Selected Parcel</div>
+            <div id="condo-detail">
+              <div class="prop-placeholder">
+                <div class="ph-icon">📍</div>
+                Click a parcel to inspect
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMMERCIAL TAB -->
+      <div id="dash-commercial" class="dashboard">
+        <div class="dash-left">
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('commercial', 'left')"
+            aria-label="Collapse left panel"
+          >
+            ‹
+          </button>
+          <div
+            class="resize-handle"
+            data-dashboard="commercial"
+            data-side="left"
+          ></div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment vs. Size<span id="commercial-scatter-count"></span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('commercial', 'scatter')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                onclick="
+                  setScatterAxes('commercial', 'sqft', 'assessed2022', this)
+                "
+              >
+                2022 Assess vs Living Area
+              </button>
+              <button
+                class="scatter-btn"
+                onclick="
+                  setScatterAxes(
+                    'commercial',
+                    'yearBuilt',
+                    'assessed2022',
+                    this,
+                  )
+                "
+              >
+                2022 Assess vs Year Built
+              </button>
+            </div>
+            <div class="scatter-wrap">
+              <div id="commercialScatter" class="d3-chart"></div>
+            </div>
+          </div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">Zone Distribution</div>
+            <div class="chart-wrap">
+              <div id="commercialClassChart" class="d3-chart"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-center">
+          <div class="stats-strip">
+            <div class="stat-card">
+              <div class="stat-lbl">2022 Assessed Total</div>
+              <div class="stat-val" id="commercial-total25">—</div>
+              <div class="stat-delta" id="commercial-delta">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">2020 Assessed Total</div>
+              <div class="stat-val" id="commercial-total20">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Parcels</div>
+              <div class="stat-val" id="commercial-count">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Mean Value 2022</div>
+              <div class="stat-val" id="commercial-avg">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Median Value 2022</div>
+              <div class="stat-val" id="commercial-median">—</div>
+            </div>
+          </div>
+          <div class="map-wrap">
+            <div id="commercialMap" class="map-container"></div>
+            <div class="map-toolbar">
+              <div id="commercial-filter-chip" class="filter-chip"></div>
+              <div class="map-badge">Commercial Parcels</div>
+              <button
+                class="filter-toggle-btn"
+                id="commercial-filter-btn"
+                onclick="toggleParcelFilter('commercial')"
+              >
+                Filter to Commercial only
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-right">
+          <div
+            class="resize-handle"
+            data-dashboard="commercial"
+            data-side="right"
+          ></div>
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('commercial', 'right')"
+            aria-label="Collapse right panel"
+          >
+            ›
+          </button>
+          <div class="panel-section">
+            <div class="panel-heading">Symbolize By</div>
+            <select
+              class="sym-select"
+              id="commercial-sym"
+              onchange="
+                changeMapSymbolization(commercialMap, 'commercial', this.value)
+              "
+            >
+              <option value="Zone">Zone</option>
+              <option value="Property Type">Property Type</option>
+              <option value="Assessed Total">2022 Assessment Value</option>
+              <option value="Pre Year Assessed Total">
+                2020 Assessment Value
+              </option>
+              <option value="Pct Change 2020-2022">2020–2022 Change %</option>
+              <option value="State Use Description">State Use</option>
+            </select>
+            <div class="panel-heading" style="margin-top: 0.5rem">Legend</div>
+            <div id="commercial-legend" class="legend-list"></div>
+          </div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading" id="commercial-bar-heading">
+              Mean 2022 Assessment
+            </div>
+            <div
+              style="
+                font-size: 0.7rem;
+                color: var(--ink-3);
+                margin-bottom: 0.3rem;
+              "
+            >
+              Group by
+            </div>
+            <select
+              class="chart-field-select"
+              id="commercial-bar-field"
+              onchange="updateRightBarChart('commercial', this.value)"
+            >
+              <option value="stateUse">State Use</option>
+              <option value="style">Style Description</option>
+              <option value="zone">Zone</option>
+              <option value="neighborhood">Neighborhood</option>
+              <option value="frame">Frame Type</option>
+            </select>
+            <div class="chart-wrap tall">
+              <div id="commercialRightBarChart" class="d3-chart"></div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <div class="panel-heading">Selected Parcel</div>
+            <div id="commercial-detail">
+              <div class="prop-placeholder">
+                <div class="ph-icon">📍</div>
+                Click a parcel to inspect
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VACANT TAB -->
+      <div id="dash-vacant" class="dashboard">
+        <div class="dash-left">
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('vacant', 'left')"
+            aria-label="Collapse left panel"
+          >
+            ‹
+          </button>
+          <div
+            class="resize-handle"
+            data-dashboard="vacant"
+            data-side="left"
+          ></div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading">
+              Assessment vs. Acreage<span id="vacant-scatter-count"></span
+              ><button
+                class="expand-btn"
+                onclick="openFullChart('vacant', 'scatter')"
+              >
+                ⤢ Full view
+              </button>
+            </div>
+            <div class="scatter-controls">
+              <button
+                class="scatter-btn active"
+                onclick="
+                  setScatterAxes('vacant', 'acreage', 'assessed2022', this)
+                "
+              >
+                2022 Assess vs Acres
+              </button>
+              <!-- <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button> -->
+            </div>
+            <div class="scatter-wrap">
+              <div id="vacantScatter" class="d3-chart"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-center">
+          <div class="stats-strip">
+            <div class="stat-card">
+              <div class="stat-lbl">2022 Assessed Total</div>
+              <div class="stat-val" id="vacant-total25">—</div>
+              <div class="stat-delta" id="vacant-delta">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">2020 Assessed Total</div>
+              <div class="stat-val" id="vacant-total20">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Parcels</div>
+              <div class="stat-val" id="vacant-count">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Mean Value 2022</div>
+              <div class="stat-val" id="vacant-avg">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">Median Value 2022</div>
+              <div class="stat-val" id="vacant-median">—</div>
+            </div>
+          </div>
+          <div class="map-wrap">
+            <div id="vacantMap" class="map-container"></div>
+            <div class="map-toolbar">
+              <div class="map-badge">Vacant Land Parcels</div>
+              <button
+                class="filter-toggle-btn"
+                id="vacant-filter-btn"
+                onclick="toggleParcelFilter('vacant')"
+              >
+                Filter to Vacant only
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-right">
+          <div
+            class="resize-handle"
+            data-dashboard="vacant"
+            data-side="right"
+          ></div>
+          <button
+            class="sidebar-toggle"
+            onclick="toggleSidebar('vacant', 'right')"
+            aria-label="Collapse right panel"
+          >
+            ›
+          </button>
+          <div class="panel-section">
+            <div class="panel-heading">Symbolize By</div>
+            <select
+              class="sym-select"
+              id="vacant-sym"
+              onchange="changeMapSymbolization(vacantMap, 'vacant', this.value)"
+            >
+              <option value="Zone">Zone</option>
+              <option value="Property Type">Property Type</option>
+              <option value="Assessed Total">2022 Assessment Value</option>
+              <option value="Pre Year Assessed Total">
+                2020 Assessment Value
+              </option>
+              <option value="Pct Change 2020-2022">2020–2022 Change %</option>
+              <option value="Land Acres">Acreage</option>
+              <option value="State Use Description">State Use</option>
+            </select>
+            <div class="panel-heading" style="margin-top: 0.5rem">Legend</div>
+            <div id="vacant-legend" class="legend-list"></div>
+          </div>
+          <div
+            class="panel-section chart-panel"
+            style="flex: 1; max-height: 460px"
+          >
+            <div class="panel-heading" id="vacant-bar-heading">
+              Mean 2022 Assessment
+            </div>
+            <div
+              style="
+                font-size: 0.7rem;
+                color: var(--ink-3);
+                margin-bottom: 0.3rem;
+              "
+            >
+              Group by
+            </div>
+            <select
+              class="chart-field-select"
+              id="vacant-bar-field"
+              onchange="updateRightBarChart('vacant', this.value)"
+            >
+              <option value="stateUse">State Use</option>
+              <option value="zone">Zone</option>
+              <option value="neighborhood">Neighborhood</option>
+            </select>
+            <div class="chart-wrap tall">
+              <div id="vacantRightBarChart" class="d3-chart"></div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <div class="panel-heading">Selected Parcel</div>
+            <div id="vacant-detail">
+              <div class="prop-placeholder">
+                <div class="ph-icon">📍</div>
+                Click a parcel to inspect
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+    <!-- #app -->
 
-  <!-- CONDO TAB -->
-  <div id="dash-condo" class="dashboard">
-    <div class="dash-left">
-      <button class="sidebar-toggle" onclick="toggleSidebar('condo','left')" aria-label="Collapse left panel">‹</button>
-      <div class="resize-handle" data-dashboard="condo" data-side="left"></div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment vs. Size<span id="condo-scatter-count"></span><button class="expand-btn" onclick="openFullChart('condo','scatter')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('condo','sqft','assessed2022',this)">2022 Assess vs Value</button>
-          <button class="scatter-btn" onclick="setScatterAxes('condo','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
-        </div>
-        <div class="scatter-wrap">
-          <div id="condoScatter" class="d3-chart"></div>
-        </div>
-      </div>
-      <!-- Beeswarm: Assessment distribution — toggleable between Style and Bedrooms -->
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment Distribution<span id="condo-beeswarm-label" style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:.4rem;color:var(--ink-3)">by Style</span><button class="expand-btn" onclick="openFullChart('condo','beeswarm')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" id="condo-bee-style-btn" onclick="switchCondoBeeswarm('style',this)">By Style</button>
-          <button class="scatter-btn" id="condo-bee-bed-btn" onclick="switchCondoBeeswarm('bedrooms',this)">By Bedrooms</button>
-        </div>
-        <div class="chart-wrap beeswarm" id="condo-beeswarm-wrap">
-          <div id="condoBeeswarm" class="d3-chart"></div>
-          <div id="condoBeeswarmBedroom" class="d3-chart" style="display:none"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-center">
-      <div class="stats-strip">
-        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="condo-total25">—</div><div class="stat-delta" id="condo-delta">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="condo-total20">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="condo-count">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Mean Value 2022</div><div class="stat-val" id="condo-avg">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Median Value 2022</div><div class="stat-val" id="condo-median">—</div></div>
-      </div>
-      <div class="map-wrap">
-        <div id="condoMap" class="map-container"></div>
-        <div class="map-toolbar">
-          <div id="condo-filter-chip" class="filter-chip"></div>
-          <div class="map-badge">Condo Parcels</div>
-          <button class="filter-toggle-btn" id="condo-filter-btn" onclick="toggleParcelFilter('condo')">Filter to Condo only</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-right">
-      <div class="resize-handle" data-dashboard="condo" data-side="right"></div>
-      <button class="sidebar-toggle" onclick="toggleSidebar('condo','right')" aria-label="Collapse right panel">›</button>
-      <div class="panel-section">
-        <div class="panel-heading">Symbolize By</div>
-        <select class="sym-select" id="condo-sym" onchange="changeMapSymbolization(condoMap,'condo',this.value)">
-          <option value="Zone">Zone</option>
-          <option value="Property Type">Property Type</option>
-          <option value="Assessed Total">2022 Assessment Value</option>
-          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
-          <option value="Pct Change 2020-2022">2020–2022 Change %</option>
-          <option value="Effective Year Built">Year Built</option>
-          <option value="Neighborhood">Neighborhood</option>
-        </select>
-        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
-        <div id="condo-legend" class="legend-list"></div>
-      </div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading" id="condo-bar-heading">Mean 2022 Assessment</div>
-        <div style="font-size:.7rem;color:var(--ink-3);margin-bottom:.3rem">Group by</div>
-        <select class="chart-field-select" id="condo-bar-field" onchange="updateRightBarChart('condo',this.value)">
-          <option value="stateUse">State Use</option>
-          <option value="style">Style Description</option>
-          <option value="zone">Zone</option>
-          <option value="frame">Frame Type</option>
-        </select>
-        <div class="chart-wrap tall">
-          <div id="condoRightBarChart" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section">
-        <div class="panel-heading">Selected Parcel</div>
-        <div id="condo-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- COMMERCIAL TAB -->
-  <div id="dash-commercial" class="dashboard">
-    <div class="dash-left">
-      <button class="sidebar-toggle" onclick="toggleSidebar('commercial','left')" aria-label="Collapse left panel">‹</button>
-      <div class="resize-handle" data-dashboard="commercial" data-side="left"></div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment vs. Size<span id="commercial-scatter-count"></span><button class="expand-btn" onclick="openFullChart('commercial','scatter')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('commercial','sqft','assessed2022',this)">2022 Assess vs Living Area</button>
-          <button class="scatter-btn" onclick="setScatterAxes('commercial','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button>
-        </div>
-        <div class="scatter-wrap">
-          <div id="commercialScatter" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Zone Distribution</div>
-        <div class="chart-wrap">
-          <div id="commercialClassChart" class="d3-chart"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-center">
-      <div class="stats-strip">
-        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="commercial-total25">—</div><div class="stat-delta" id="commercial-delta">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="commercial-total20">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="commercial-count">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Mean Value 2022</div><div class="stat-val" id="commercial-avg">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Median Value 2022</div><div class="stat-val" id="commercial-median">—</div></div>
-      </div>
-      <div class="map-wrap">
-        <div id="commercialMap" class="map-container"></div>
-        <div class="map-toolbar">
-          <div id="commercial-filter-chip" class="filter-chip"></div>
-          <div class="map-badge">Commercial Parcels</div>
-          <button class="filter-toggle-btn" id="commercial-filter-btn" onclick="toggleParcelFilter('commercial')">Filter to Commercial only</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-right">
-      <div class="resize-handle" data-dashboard="commercial" data-side="right"></div>
-      <button class="sidebar-toggle" onclick="toggleSidebar('commercial','right')" aria-label="Collapse right panel">›</button>
-      <div class="panel-section">
-        <div class="panel-heading">Symbolize By</div>
-        <select class="sym-select" id="commercial-sym" onchange="changeMapSymbolization(commercialMap,'commercial',this.value)">
-          <option value="Zone">Zone</option>
-          <option value="Property Type">Property Type</option>
-          <option value="Assessed Total">2022 Assessment Value</option>
-          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
-          <option value="Pct Change 2020-2022">2020–2022 Change %</option>
-          <option value="State Use Description">State Use</option>
-        </select>
-        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
-        <div id="commercial-legend" class="legend-list"></div>
-      </div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading" id="commercial-bar-heading">Mean 2022 Assessment</div>
-        <div style="font-size:.7rem;color:var(--ink-3);margin-bottom:.3rem">Group by</div>
-        <select class="chart-field-select" id="commercial-bar-field" onchange="updateRightBarChart('commercial',this.value)">
-          <option value="stateUse">State Use</option>
-          <option value="style">Style Description</option>
-          <option value="zone">Zone</option>
-          <option value="neighborhood">Neighborhood</option>
-          <option value="frame">Frame Type</option>
-        </select>
-        <div class="chart-wrap tall">
-          <div id="commercialRightBarChart" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section">
-        <div class="panel-heading">Selected Parcel</div>
-        <div id="commercial-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- VACANT TAB -->
-  <div id="dash-vacant" class="dashboard">
-    <div class="dash-left">
-      <button class="sidebar-toggle" onclick="toggleSidebar('vacant','left')" aria-label="Collapse left panel">‹</button>
-      <div class="resize-handle" data-dashboard="vacant" data-side="left"></div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading">Assessment vs. Acreage<span id="vacant-scatter-count"></span><button class="expand-btn" onclick="openFullChart('vacant','scatter')">⤢ Full view</button></div>
-        <div class="scatter-controls">
-          <button class="scatter-btn active" onclick="setScatterAxes('vacant','acreage','assessed2022',this)">2022 Assess vs Acres</button>
-          <!-- <button class="scatter-btn" onclick="setScatterAxes('vacant','yearBuilt','assessed2022',this)">2022 Assess vs Year Built</button> -->
-        </div>
-        <div class="scatter-wrap">
-          <div id="vacantScatter" class="d3-chart"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-center">
-      <div class="stats-strip">
-        <div class="stat-card"><div class="stat-lbl">2022 Assessed Total</div><div class="stat-val" id="vacant-total25">—</div><div class="stat-delta" id="vacant-delta">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">2020 Assessed Total</div><div class="stat-val" id="vacant-total20">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Parcels</div><div class="stat-val" id="vacant-count">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Mean Value 2022</div><div class="stat-val" id="vacant-avg">—</div></div>
-        <div class="stat-card"><div class="stat-lbl">Median Value 2022</div><div class="stat-val" id="vacant-median">—</div></div>
-      </div>
-      <div class="map-wrap">
-        <div id="vacantMap" class="map-container"></div>
-        <div class="map-toolbar">
-          <div class="map-badge">Vacant Land Parcels</div>
-          <button class="filter-toggle-btn" id="vacant-filter-btn" onclick="toggleParcelFilter('vacant')">Filter to Vacant only</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="dash-right">
-      <div class="resize-handle" data-dashboard="vacant" data-side="right"></div>
-      <button class="sidebar-toggle" onclick="toggleSidebar('vacant','right')" aria-label="Collapse right panel">›</button>
-      <div class="panel-section">
-        <div class="panel-heading">Symbolize By</div>
-        <select class="sym-select" id="vacant-sym" onchange="changeMapSymbolization(vacantMap,'vacant',this.value)">
-          <option value="Zone">Zone</option>
-          <option value="Property Type">Property Type</option>
-          <option value="Assessed Total">2022 Assessment Value</option>
-          <option value="Pre Year Assessed Total">2020 Assessment Value</option>
-          <option value="Pct Change 2020-2022">2020–2022 Change %</option>
-          <option value="Land Acres">Acreage</option>
-          <option value="State Use Description">State Use</option>
-        </select>
-        <div class="panel-heading" style="margin-top:.5rem">Legend</div>
-        <div id="vacant-legend" class="legend-list"></div>
-      </div>
-      <div class="panel-section chart-panel" style="flex:1; max-height:460px">
-        <div class="panel-heading" id="vacant-bar-heading">Mean 2022 Assessment</div>
-        <div style="font-size:.7rem;color:var(--ink-3);margin-bottom:.3rem">Group by</div>
-        <select class="chart-field-select" id="vacant-bar-field" onchange="updateRightBarChart('vacant',this.value)">
-          <option value="stateUse">State Use</option>
-          <option value="zone">Zone</option>
-          <option value="neighborhood">Neighborhood</option>
-        </select>
-        <div class="chart-wrap tall">
-          <div id="vacantRightBarChart" class="d3-chart"></div>
-        </div>
-      </div>
-      <div class="panel-section">
-        <div class="panel-heading">Selected Parcel</div>
-        <div id="vacant-detail"><div class="prop-placeholder"><div class="ph-icon">📍</div>Click a parcel to inspect</div></div>
-      </div>
-    </div>
-  </div>
-
-</div><!-- #app -->
-
-<script src="js/config.js"></script>
-<script src="js/state.js"></script>
-<script src="js/symbolization.js"></script>
-<script src="js/map.js"></script>
-<script src="js/data.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/main.js"></script>
-</body>
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/symbolization.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/fullchart.js"></script>
+  </body>
 </html>
